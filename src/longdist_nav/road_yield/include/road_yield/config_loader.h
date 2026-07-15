@@ -1,5 +1,5 @@
-#ifndef ROAD_YIELD_MANAGER_CONFIG_LOADER_H
-#define ROAD_YIELD_MANAGER_CONFIG_LOADER_H
+#ifndef ROAD_YIELD_CONFIG_LOADER_H_
+#define ROAD_YIELD_CONFIG_LOADER_H_
 
 #include <road_yield/road_geometry.h>
 
@@ -98,4 +98,4 @@ ManagerConfig loadManagerConfig(const std::string& yaml_path);
 
 }  // namespace road_yield
 
-#endif  // ROAD_YIELD_MANAGER_CONFIG_LOADER_H
+#endif  // ROAD_YIELD_CONFIG_LOADER_H_

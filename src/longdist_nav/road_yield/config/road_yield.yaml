@@ -10,8 +10,8 @@ route_waypoint_file: patrol_route.csv
 avoidance_waypoint_file: yield_points.csv
 road_boundary_file: road_boundaries.csv
 csv_yaw_degrees: true
-near_goal_advance_distance: 3.0
-goal_timeout: 120.0
+near_goal_advance_distance: 2.0
+goal_timeout: 20.0
 avoidance_goal_timeout: 120.0
 failure_retry_distance: 3.0
 failure_retry_count: 2
@@ -20,7 +20,7 @@ continue_on_route_failure: false
 # Safety timing. The wait starts when the shelter goal succeeds. Vehicles do
 # not reset it; resume requires both wait completion and a fresh detection
 # showing no vehicle in the forward road region.
-require_perception_before_navigation: true
+require_perception_before_navigation: false
 perception_timeout: 0.8
 oncoming_confirm_time: 0.0
 avoidance_wait_time: 3.0
@@ -32,12 +32,14 @@ vehicle_labels: [10, 11, 12, 13, 30, 31, 32]
 # classification.probability is currently not populated and is not filtered.
 max_coasted_time: 0.3
 
-# Boundary CSV rows MUST be ordered in the robot's travel direction.
-# Consecutive left/right pairs form the quadrilateral detection strip.
+# Boundary CSV rows must follow the road so consecutive left/right pairs form
+# the quadrilateral detection strip. Their order no longer defines travel
+# direction; forward is calculated from the robot to the current patrol goal.
 # waypoint_line is the physical patrol CSV line number including its header;
 # it also limits detection to the corresponding patrol section.
 ahead_margin: 0.3
-# <= 0 disables the maximum-ahead-distance limit.
+# Longitudinal distance along robot -> current patrol goal. <= 0 disables the
+# maximum-ahead-distance limit.
 max_detection_ahead: 30.0
 
 stair_mode_topic: /stair_mode

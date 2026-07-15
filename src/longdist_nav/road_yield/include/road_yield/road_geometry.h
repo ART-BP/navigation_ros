@@ -1,5 +1,5 @@
-#ifndef ROAD_YIELD_MANAGER_ROAD_GEOMETRY_H
-#define ROAD_YIELD_MANAGER_ROAD_GEOMETRY_H
+#ifndef ROAD_YIELD_ROAD_GEOMETRY_H_
+#define ROAD_YIELD_ROAD_GEOMETRY_H_
 
 #include <cstddef>
 #include <limits>
@@ -28,8 +28,8 @@ struct RoadProjection
   std::size_t segment_index{0};
 };
 
-// The cross sections must be ordered in the robot's intended travel direction.
 // Consecutive left/right pairs form one quadrilateral of the detection region.
+// Their order defines road connectivity, but not the robot's travel direction.
 class RoadGeometry
 {
 public:
@@ -37,11 +37,12 @@ public:
 
   bool contains(const Point2D& point, RoadProjection* projection = nullptr) const;
   RoadProjection projectToCenterline(const Point2D& point) const;
-  bool isAheadInside(const Point2D& point,
-                     double robot_station,
-                     double ahead_margin,
-                     double max_ahead_distance,
-                     RoadProjection* projection = nullptr) const;
+  bool isAheadTowardGoal(const Point2D& point,
+                         const Point2D& robot_position,
+                         const Point2D& navigation_goal,
+                         double ahead_margin,
+                         double max_ahead_distance,
+                         RoadProjection* projection = nullptr) const;
 
   const std::vector<RoadCrossSection>& crossSections() const;
   double length() const;
@@ -56,4 +57,4 @@ double distance(const Point2D& lhs, const Point2D& rhs);
 
 }  // namespace road_yield
 
-#endif  // ROAD_YIELD_MANAGER_ROAD_GEOMETRY_H
+#endif  // ROAD_YIELD_ROAD_GEOMETRY_H_

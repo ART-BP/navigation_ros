@@ -129,6 +129,7 @@ bool RoadGeometry::contains(const Point2D& point, RoadProjection* projection) co
     {
       best_inside_projection = candidate;
     }
+    break;  // point can only be inside one road cell, so we can stop searching
   }
 
   if (projection != nullptr)
@@ -138,11 +139,14 @@ bool RoadGeometry::contains(const Point2D& point, RoadProjection* projection) co
   return inside;
 }
 
-bool RoadGeometry::isAheadInside(const Point2D& point,
-                                 double robot_station,
-                                 double ahead_margin,
-                                 double max_ahead_distance,
-                                 RoadProjection* projection) const
+// Check if the point is ahead of the robot toward the navigation goal, within the specified margins.
+
+bool RoadGeometry::isAheadTowardGoal(const Point2D& point,
+                                     const Point2D& robot_position,
+                                     const Point2D& navigation_goal,
+                                     double ahead_margin,
+                                     double max_ahead_distance,
+                                     RoadProjection* projection) const
 {
   RoadProjection vehicle_projection;
   if (!contains(point, &vehicle_projection) || !vehicle_projection.valid)
@@ -155,12 +159,23 @@ bool RoadGeometry::isAheadInside(const Point2D& point,
     *projection = vehicle_projection;
   }
 
-  const double delta_station = vehicle_projection.station - robot_station;
-  if (delta_station <= ahead_margin)
+  const double direction_x = navigation_goal.x - robot_position.x;
+  const double direction_y = navigation_goal.y - robot_position.y;
+  const double direction_length = std::hypot(direction_x, direction_y);
+  if (direction_length <= kEpsilon)
   {
     return false;
   }
-  return max_ahead_distance <= 0.0 || delta_station <= max_ahead_distance;
+
+  const double vehicle_offset_x = point.x - robot_position.x;
+  const double vehicle_offset_y = point.y - robot_position.y;
+  const double forward_distance =
+      (vehicle_offset_x * direction_x + vehicle_offset_y * direction_y) / direction_length;
+  if (forward_distance <= ahead_margin)
+  {
+    return false;
+  }
+  return max_ahead_distance <= 0.0 || forward_distance <= max_ahead_distance;
 }
 
 const std::vector<RoadCrossSection>& RoadGeometry::crossSections() const

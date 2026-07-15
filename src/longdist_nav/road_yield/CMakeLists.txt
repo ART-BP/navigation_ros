@@ -22,7 +22,7 @@ find_package(yaml-cpp REQUIRED)
 
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES road_geometry road_yield_config
+  LIBRARIES road_geometry road_yield_config road_yield_core
   CATKIN_DEPENDS
     actionlib
     dynamic_obstacles
@@ -61,6 +61,22 @@ target_link_libraries(road_yield_config
   yaml-cpp
 )
 
+add_library(road_yield_core
+  src/navigation_client.cpp
+  src/pose_provider.cpp
+  src/road_yield_manager.cpp
+  src/stair_controller.cpp
+  src/vehicle_monitor.cpp
+)
+add_dependencies(road_yield_core
+  ${catkin_EXPORTED_TARGETS}
+)
+target_link_libraries(road_yield_core
+  road_geometry
+  road_yield_config
+  ${catkin_LIBRARIES}
+)
+
 add_executable(road_yield_node
   src/road_yield_node.cpp
 )
@@ -68,8 +84,7 @@ add_dependencies(road_yield_node
   ${catkin_EXPORTED_TARGETS}
 )
 target_link_libraries(road_yield_node
-  road_geometry
-  road_yield_config
+  road_yield_core
   ${catkin_LIBRARIES}
 )
 
@@ -88,7 +103,7 @@ if(CATKIN_ENABLE_TESTING)
   endif()
 endif()
 
-install(TARGETS road_geometry road_yield_config road_yield_node
+install(TARGETS road_geometry road_yield_config road_yield_core road_yield_node
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

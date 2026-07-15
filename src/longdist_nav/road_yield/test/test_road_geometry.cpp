@@ -12,12 +12,26 @@ TEST(RoadGeometry, DetectsOnlyInsideAndAhead)
       {{20.0, 2.0}, {20.0, -2.0}},
   });
 
-  const auto robot = road.projectToCenterline({8.0, 0.0});
-  ASSERT_TRUE(robot.valid);
-  EXPECT_TRUE(road.isAheadInside({12.0, 1.0}, robot.station, 0.5, 20.0));
-  EXPECT_FALSE(road.isAheadInside({6.0, 1.0}, robot.station, 0.5, 20.0));
-  EXPECT_FALSE(road.isAheadInside({12.0, 3.0}, robot.station, 0.5, 20.0));
-  EXPECT_FALSE(road.isAheadInside({19.0, 0.0}, robot.station, 0.5, 5.0));
+  const rym::Point2D robot{8.0, 0.0};
+  const rym::Point2D goal{20.0, 0.0};
+  EXPECT_TRUE(road.isAheadTowardGoal({12.0, 1.0}, robot, goal, 0.5, 20.0));
+  EXPECT_FALSE(road.isAheadTowardGoal({6.0, 1.0}, robot, goal, 0.5, 20.0));
+  EXPECT_FALSE(road.isAheadTowardGoal({12.0, 3.0}, robot, goal, 0.5, 20.0));
+  EXPECT_FALSE(road.isAheadTowardGoal({19.0, 0.0}, robot, goal, 0.5, 5.0));
+}
+
+TEST(RoadGeometry, UsesCurrentGoalDirectionWhenRouteReverses)
+{
+  const rym::RoadGeometry road({
+      {{0.0, 2.0}, {0.0, -2.0}},
+      {{10.0, 2.0}, {10.0, -2.0}},
+      {{20.0, 2.0}, {20.0, -2.0}},
+  });
+
+  const rym::Point2D robot{10.0, 0.0};
+  const rym::Point2D reverse_goal{0.0, 0.0};
+  EXPECT_TRUE(road.isAheadTowardGoal({6.0, 1.0}, robot, reverse_goal, 0.5, 20.0));
+  EXPECT_FALSE(road.isAheadTowardGoal({14.0, 1.0}, robot, reverse_goal, 0.5, 20.0));
 }
 
 TEST(RoadGeometry, SupportsCurvedStrip)
