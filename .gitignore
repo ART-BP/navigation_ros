@@ -43,7 +43,3 @@ Thumbs.db
 /.agents/
 /.codex/
 
-# Keep deployment sources, install trees, scripts, configuration and release
-# archives. Exclude runtime recordings and transient files inside deploy too.
-/deploy/**/bag/
-/deploy/**/log/
