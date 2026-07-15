@@ -1,0 +1,4 @@
+route_waypoint_file: stair_route.csv
+avoidance_waypoint_file: absent_shelters.csv
+road_boundary_file: absent_boundaries.csv
+csv_yaw_degrees: true

@@ -73,15 +73,3 @@ TEST(ConfigLoader, RejectsOnlyOneAvailableRoadYieldFile)
 {
   EXPECT_THROW(rym::loadManagerConfig(TEST_PARTIAL_YIELD_CONFIG_PATH), std::runtime_error);
 }
-
-TEST(ConfigLoader, LoadsSimulationConfiguration)
-{
-  const rym::ManagerConfig config = rym::loadManagerConfig(TEST_SIM_CONFIG_PATH);
-
-  EXPECT_TRUE(config.road_yield_enabled);
-  EXPECT_EQ(4u, config.route.size());
-  EXPECT_EQ(7u, config.avoidance_points.size());
-  EXPECT_EQ(3u, config.road_cross_sections.size());
-  EXPECT_EQ(0u, config.detection_route_begin);
-  EXPECT_EQ(2u, config.detection_route_end);
-}

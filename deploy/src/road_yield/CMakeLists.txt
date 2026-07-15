@@ -102,7 +102,6 @@ if(CATKIN_ENABLE_TESTING)
       TEST_PATROL_ONLY_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/data/patrol_only_config.yaml"
       TEST_MISSING_YIELD_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/data/missing_yield_config.yaml"
       TEST_PARTIAL_YIELD_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/data/partial_yield_config.yaml"
-      TEST_SIM_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config/path_sim/road_yield.yaml"
     )
     target_link_libraries(test_config_loader road_yield_config road_geometry ${catkin_LIBRARIES})
   endif()

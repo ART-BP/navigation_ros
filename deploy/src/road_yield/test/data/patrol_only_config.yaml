@@ -1,0 +1,5 @@
+route_waypoint_file: stair_route.csv
+csv_yaw_degrees: true
+stair_index_base: 1
+stair_indices: [3]
+require_perception_before_navigation: true
