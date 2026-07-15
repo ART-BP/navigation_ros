@@ -1,0 +1,49 @@
+# Catkin workspace outputs
+/build/
+/devel/
+/install/
+/log/
+/.catkin_tools/
+/.catkin_workspace
+
+# Local ROS runtime data
+/.ros/
+/bag/
+*.bag
+*.bag.active
+*.log
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# C/C++ generated files
+compile_commands.json
+.cache/
+.clangd/
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Codex workspace metadata
+/.agents/
+/.codex/
+
+# Keep deployment sources, install trees, scripts, configuration and release
+# archives. Exclude runtime recordings and transient files inside deploy too.
+/deploy/**/bag/
+/deploy/**/log/

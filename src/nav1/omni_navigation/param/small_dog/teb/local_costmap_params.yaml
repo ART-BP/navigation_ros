@@ -1,0 +1,28 @@
+local_costmap:
+  # global_frame: odom
+  global_frame: map
+  robot_base_frame: base_link
+  transform_tolerance: 0.5
+
+  update_frequency: 5.0
+  publish_frequency: 5.0
+  rolling_window: true
+  width: 6
+  height: 6
+  resolution: 0.1
+
+  plugins:
+    - {name: static_layer,    type: "costmap_2d::StaticLayer"}
+    - {name: obstacle_layer,  type: "costmap_2d::ObstacleLayer"}
+    - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
+ #   - {name: perception_layer, type: "costmap_2d::PerceptionLayer"}
+    
+
+  inflation_layer:
+    enabled:              true
+    cost_scaling_factor:  5.0  # keep a useful wall cost gradient without filling the whole 6 m local window
+    inflation_radius:     0.60  # leave narrow corridors traversable; TEB still enforces footprint + min_obstacle_dist
+    
+  perception_layer:
+    enabled: true
+    perception_map_topic: /perception_map

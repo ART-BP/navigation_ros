@@ -1,0 +1,16 @@
+<launch>
+  <arg name="map_file" default="$(find omni_navigation)/maps/map.yaml"/>
+  <arg name="frame_id" default="map"/>
+  <arg name="config_file" default="$(find teb_obstacle_sim)/config/obstacles.yaml"/>
+
+  <include file="$(find omni_navigation)/launch/sim_navigation.launch">
+    <arg name="map_file" value="$(arg map_file)"/>
+    <arg name="local_planner" value="teb"/>
+    <arg name="dog_name" value="small_dog"/>
+  </include>
+
+  <include file="$(find teb_obstacle_sim)/launch/simulator.launch">
+    <arg name="frame_id" value="$(arg frame_id)"/>
+    <arg name="config_file" value="$(arg config_file)"/>
+  </include>
+</launch>

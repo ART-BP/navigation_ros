@@ -1,0 +1,8 @@
+prefix=/home/allgo/mydrive/navigation_ws/deploy/runtime/install
+
+Name: dynamic_obstacles
+Description: Description of dynamic_obstacles
+Version: 0.0.1
+Cflags: -I${prefix}/include
+Libs: -L${prefix}/lib 
+Requires: costmap_converter geometry_msgs message_runtime roscpp std_msgs tf2 uuid_msgs visualization_msgs

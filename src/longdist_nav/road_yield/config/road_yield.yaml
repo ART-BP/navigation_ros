@@ -1,0 +1,59 @@
+move_base_action: /move_base
+tracked_objects_topic: /tracked_objects
+frame_id: map
+robot_base_frame: base_link
+
+# Three independent CSV files. Relative paths are resolved from this YAML.
+# Patrol/avoidance: mx,my,yaw,cmd. Boundary:
+# waypoint_line,left_x,left_y,right_x,right_y.
+route_waypoint_file: patrol_route.csv
+avoidance_waypoint_file: yield_points.csv
+road_boundary_file: road_boundaries.csv
+csv_yaw_degrees: true
+near_goal_advance_distance: 3.0
+goal_timeout: 120.0
+avoidance_goal_timeout: 120.0
+failure_retry_distance: 3.0
+failure_retry_count: 2
+continue_on_route_failure: false
+
+# Safety timing. The wait starts when the shelter goal succeeds. Vehicles do
+# not reset it; resume requires both wait completion and a fresh detection
+# showing no vehicle in the forward road region.
+require_perception_before_navigation: true
+perception_timeout: 0.8
+oncoming_confirm_time: 0.0
+avoidance_wait_time: 3.0
+
+# Vehicle selection. Add/remove two-wheel vehicle labels as required.
+# CAR=10, TRUCK=11, BUS=12, TRAILER=13, MOTORCYCLE=30,
+# BICYCLE=31, ELECTRIC_BICYCLE=32.
+vehicle_labels: [10, 11, 12, 13, 30, 31, 32]
+# classification.probability is currently not populated and is not filtered.
+max_coasted_time: 0.3
+
+# Boundary CSV rows MUST be ordered in the robot's travel direction.
+# Consecutive left/right pairs form the quadrilateral detection strip.
+# waypoint_line is the physical patrol CSV line number including its header;
+# it also limits detection to the corresponding patrol section.
+ahead_margin: 0.3
+# <= 0 disables the maximum-ahead-distance limit.
+max_detection_ahead: 30.0
+
+stair_mode_topic: /stair_mode
+stair_publish_rate: 10.0
+stair_warmup_time: 1.0
+teb_reconfigure_ns: /move_base/TebLocalPlannerROS
+dynamic_reconfigure_timeout: 5.0
+stair_teb_params:
+  max_vel_x: 0.65
+  max_vel_theta: 0.22
+  acc_lim_x: 0.70
+  acc_lim_theta: 0.45
+  weight_kinematics_forward_drive: 900.0
+  weight_optimaltime: 0.5
+  weight_viapoint: 8.0
+
+wait_server_timeout: 10.0
+tf_timeout: 0.1
+control_rate: 10.0

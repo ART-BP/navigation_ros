@@ -1,0 +1,10 @@
+<launch>
+  <arg name="config" default="$(find road_yield)/config/road_yield.yaml"/>
+
+  <node pkg="road_yield"
+        type="road_yield_node"
+        name="road_yield"
+        output="screen">
+    <param name="config" value="$(arg config)"/>
+  </node>
+</launch>

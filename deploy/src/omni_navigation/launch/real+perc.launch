@@ -1,0 +1,34 @@
+<launch>
+    <!-- Arguments -->
+    <arg name="map_file" default="$(find omni_navigation)/maps/test.yaml"/>
+    <arg name="local_planner" default="teb_perc" />
+    <arg name="dog_name" default="big_dog" />  
+    <arg name="rviz" default="false" />
+    <!-- "big_dog" or "small_dog" -->
+    
+    <!-- 禁用模拟时间 -->
+    <param name="use_sim_time" value="false" />
+    
+    <!-- PointCloud to LaserScan -->
+    <include file="$(find omni_navigation)/launch/pc2scan.launch"/>
+
+    <!-- Map server -->
+    <node pkg="map_server" name="map_server" type="map_server" args="$(arg map_file)"/>
+    
+    <!-- AMCL -->
+    <include file="$(find omni_navigation)/launch/amcl.launch"/>
+
+    <!-- move_base -->
+    <include file="$(find omni_navigation)/launch/move_base_$(arg local_planner).launch">
+      <arg name="dog_name" value="$(arg dog_name)" />
+    </include>
+    
+    <!-- 启动 RViz，加载指定配置 -->
+    <group if="$(arg rviz)">
+    <node name="rviz" pkg="rviz" type="rviz" output="screen" args="-d $(find omni_navigation)/rviz/move_base_perc.rviz" />
+    </group>
+    
+    <node pkg="tf" type="static_transform_publisher" name="footprint_broadcaster" args="0 0 0 0 0 0 base_link base_footprint 10" />
+    
+    <!--node pkg="tf" type="static_transform_publisher" name="map2odom" args="0 0 0 0 0 0 map odom 10" /-->
+</launch>

@@ -1,0 +1,35 @@
+<launch>
+  <arg name="output_topic" default="/move_base/TebLocalPlannerROS/obstacles"/>
+  <arg name="marker_topic" default="/teb_obstacle_sim/markers"/>
+  <arg name="frame_id" default="map"/>
+  <arg name="use_config" default="true"/>
+  <arg name="config_file" default="$(find teb_obstacle_sim)/config/obstacles.yaml"/>
+  <arg name="obstacle_id" default="1"/>
+  <arg name="initial_x" default="6.0"/>
+  <arg name="initial_y" default="0.0"/>
+  <arg name="velocity_x" default="-0.6"/>
+  <arg name="velocity_y" default="0.0"/>
+  <arg name="radius" default="0.3"/>
+  <arg name="publish_rate" default="10.0"/>
+  <arg name="reset_period" default="15.0"/>
+  <arg name="prediction_horizon" default="3.0"/>
+
+  <node pkg="teb_obstacle_sim"
+        type="simulator.py"
+        name="teb_obstacle_sim"
+        output="screen">
+    <rosparam if="$(arg use_config)" file="$(arg config_file)" command="load"/>
+    <param name="output_topic" value="$(arg output_topic)"/>
+    <param name="marker_topic" value="$(arg marker_topic)"/>
+    <param name="frame_id" value="$(arg frame_id)"/>
+    <param name="obstacle_id" value="$(arg obstacle_id)"/>
+    <param name="initial_x" value="$(arg initial_x)"/>
+    <param name="initial_y" value="$(arg initial_y)"/>
+    <param name="velocity_x" value="$(arg velocity_x)"/>
+    <param name="velocity_y" value="$(arg velocity_y)"/>
+    <param name="radius" value="$(arg radius)"/>
+    <param name="publish_rate" value="$(arg publish_rate)"/>
+    <param name="reset_period" value="$(arg reset_period)"/>
+    <param name="prediction_horizon" value="$(arg prediction_horizon)"/>
+  </node>
+</launch>

@@ -1,0 +1,4 @@
+<launch>
+  <node name="map_server" pkg="map_server" type="map_server" args="/home/unitree/ros_navigation_ws/src/omni_robot/omni_navigation/maps/test.yaml" output="screen" />
+</launch>
+

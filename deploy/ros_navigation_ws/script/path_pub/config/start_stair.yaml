@@ -1,0 +1,39 @@
+move_base_action: /move_base
+teb_reconfigure_ns: /move_base/TebLocalPlannerROS
+stair_mode_topic: /stair_mode
+stair_publish_rate: 10.0
+dynamic_reconfigure_timeout: 5.0
+wait_server_timeout: 10.0
+goal_timeout: 120.0
+continue_on_failure: false
+frame_id: map
+
+# Most waypoints are normal. Mark only the stair targets here.
+# Indices are 1-based by default: waypoint #2 below is the stair segment.
+stair_index_base: 1
+stair_indices: [2]
+
+stair_teb_params:
+  max_vel_x: 0.75
+  max_vel_theta: 0.3
+  acc_lim_x: 0.65
+  acc_lim_theta: 0.45
+  weight_kinematics_forward_drive: 1200.0
+  weight_optimaltime: 0.5
+  weight_viapoint: 8.0
+
+waypoints:
+ - [6.47, 130, -1.511776]
+ - [7.02, 127, -3.082572]
+ - [-3.763919, 125.774733, -3.092046]
+ - [-14.187142, 124.924783, -3.084193]
+ - [-24.567585, 123.779674, -3.011482]
+ - [-33.989362, 121.976569, -2.475105]
+ - [-41.16877, 114.86186, -2.193651]
+ - [-46.20738, 105.821021, -2.028900]
+ - [-47.283134, 100.185004, -1.485074]
+ - [-44.016238, 89.932525, -1.181775]
+ - [-40.663766, 80.280698, -1.187044]
+ - [-38.741147, 72.585418, -1.187044]
+
+
