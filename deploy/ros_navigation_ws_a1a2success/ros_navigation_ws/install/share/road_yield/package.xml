@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>road_yield</name>
+  <version>0.1.0</version>
+  <description>Manage move_base road waypoints and stair-side yielding for oncoming vehicles.</description>
+
+  <maintainer email="allgo@todo.todo">allgo</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>actionlib</depend>
+  <depend>dynamic_obstacles</depend>
+  <depend>dynamic_reconfigure</depend>
+  <depend>geometry_msgs</depend>
+  <depend>move_base_msgs</depend>
+  <depend>roscpp</depend>
+  <depend>std_msgs</depend>
+  <depend>teb_local_planner</depend>
+  <depend>tf2</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>yaml-cpp</depend>
+
+  <test_depend>rostest</test_depend>
+</package>

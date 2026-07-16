@@ -65,8 +65,8 @@ TebLocalPlannerROS:
   ##################################
   # 7. 目标容差
   ##################################
-  xy_goal_tolerance: 0.5        # (double) [m] 接受的平面距离误差
-  yaw_goal_tolerance: 0.97     # (double) [rad] 接受的航向误差（约 90°）
+  xy_goal_tolerance: 0.7        # (double) [m] 接受的平面距离误差
+  yaw_goal_tolerance: 1.57     # (double) [rad] 接受的航向误差（约 90°）
   free_goal_vel: false          # (bool) 若为 false，目标处速度必须为零；防止通过目标时“高速冲过”
 
   ##################################

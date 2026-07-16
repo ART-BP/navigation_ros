@@ -1,0 +1,86 @@
+move_base_action: /move_base
+tracked_objects_topic: /tracked_objects
+frame_id: map
+robot_base_frame: base_link
+
+# The patrol CSV is mandatory. Avoidance and boundary CSVs are an optional
+# pair; when both are absent the node runs patrol-only mode. Relative paths
+# are resolved from this YAML. Patrol/avoidance: mx,my,yaw,cmd. Boundary:
+# waypoint_line,left_x,left_y,right_x,right_y.
+route_waypoint_file: patrol_route.csv
+avoidance_waypoint_file: yield_points.csv
+road_boundary_file: road_boundaries.csv
+csv_yaw_degrees: true
+# Mark patrol stair goals here using 1-based waypoint numbers, or write
+# "stair" in that patrol CSV row's cmd column. Leave both empty for normal
+# patrol goals. stair_waypoint_indices is also accepted as an alias.
+stair_index_base: 1
+stair_indices: []
+near_goal_advance_distance: 2.0
+goal_timeout: 120.0
+avoidance_goal_timeout: 120.0
+# During one yield event, retain only the nearest candidates. If distance to
+# the active shelter improves by less than 0.25 m over 8 s, blacklist that
+# shelter for the event and immediately try the next candidate.
+avoidance_candidate_limit: 5
+avoidance_progress_timeout: 8.0
+avoidance_min_progress: 0.25
+failure_retry_distance: 3.0
+failure_retry_count: 2
+continue_on_route_failure: false
+
+# Safety timing. The wait starts when the shelter goal succeeds. Vehicles do
+# not reset it; resume requires both wait completion and a fresh detection
+# followed by five new consecutive clear messages with no configured vehicle
+# behind the robot.
+require_perception_before_navigation: false
+perception_timeout: 0.8
+perception_warning_interval: 30.0
+avoidance_wait_time: 3.0
+
+# At 5 Hz, evaluate the latest five perception messages. Yield when at least
+# three messages contain a vehicle ahead that is stationary, moving opposite
+# to the current patrol direction, or has no valid velocity.
+detection_window_size: 5
+detection_required_count: 3
+clear_required_count: 5
+stationary_speed_threshold: 0.1
+opposing_speed_threshold: 0.1
+
+# Vehicle selection. Add/remove two-wheel vehicle labels as required.
+# CAR=10, TRUCK=11, BUS=12, TRAILER=13, MOTORCYCLE=30,
+# BICYCLE=31, ELECTRIC_BICYCLE=32.
+vehicle_labels: [10, 11, 12, 13, 30, 31, 32]
+# classification.probability is currently not populated and is not filtered.
+max_coasted_time: 0.3
+
+# Boundary CSV rows must follow the road so consecutive left/right pairs form
+# the quadrilateral detection strip. Their order no longer defines travel
+# direction; forward is calculated from the robot to the current patrol goal.
+# waypoint_line is the physical patrol CSV line number including its header;
+# it also limits detection to the corresponding patrol section.
+ahead_margin: 0.3
+# Longitudinal distance along robot -> current patrol goal. <= 0 disables the
+# maximum-ahead-distance limit.
+max_detection_ahead: 30.0
+behind_margin: 0.3
+# Longitudinal distance behind the robot. <= 0 disables the distance limit.
+max_detection_behind: 30.0
+
+stair_mode_topic: /stair_mode
+stair_publish_rate: 10.0
+stair_warmup_time: 1.0
+teb_reconfigure_ns: /move_base/TebLocalPlannerROS
+dynamic_reconfigure_timeout: 5.0
+stair_teb_params:
+  max_vel_x: 0.65
+  max_vel_theta: 0.22
+  acc_lim_x: 0.70
+  acc_lim_theta: 0.45
+  weight_kinematics_forward_drive: 900.0
+  weight_optimaltime: 0.5
+  weight_viapoint: 8.0
+
+wait_server_timeout: 10.0
+tf_timeout: 0.1
+control_rate: 10.0

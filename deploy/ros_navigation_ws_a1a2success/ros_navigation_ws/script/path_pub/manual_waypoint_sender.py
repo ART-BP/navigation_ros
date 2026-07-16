@@ -9,10 +9,13 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
 # x, y, yaw（角度）
 WAYPOINTS = [
-    (-38.741147, 72.585418, -68.012611),
-    (-35.935962, 62.813723, -77.787329),
-    (-33.300853, 52.723518, -71.945394),
-    (-33.700147, 31.755942, -85.596400),
+    (4.2, 0.866, -90.0),
+    (3.099, -12.700, -90.0),
+    (-1.784, -14.884, 170.0),
+    (-6.057, -15.021, 170),
+    (-11.088, -16.010, -105.0),
+    (-9.408, -22.254, -71.94),
+    (-5.937, -24.320, 85.0),
 ]
 
 
@@ -44,19 +47,16 @@ def main():
                 )
             ).strip().lower()
             if answer == "q":
-                client.cancel_goal()
                 break
 
             client.send_goal(make_goal(x, y, yaw_deg))
-            rospy.loginfo("Goal %d sent", index)
+            # client.wait_for_result()
 
-        if index == len(WAYPOINTS) and answer != "q":
-            client.wait_for_result()
-            state = client.get_state()
-            if state == GoalStatus.SUCCEEDED:
-                rospy.loginfo("Final goal reached")
-            else:
-                rospy.logwarn("Final goal finished with state %d", state)
+            # state = client.get_state()
+            # if state == GoalStatus.SUCCEEDED:
+            rospy.loginfo("Goal %d reached", index)
+            # else:
+            #     rospy.logwarn("Goal %d finished with state %d", index, state)
     except (KeyboardInterrupt, rospy.ROSInterruptException):
         client.cancel_goal()
 

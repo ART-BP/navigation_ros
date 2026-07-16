@@ -1,0 +1,8 @@
+prefix=/tmp/road_yield_teb_compatible/install
+
+Name: road_yield
+Description: Description of road_yield
+Version: 0.1.0
+Cflags: -I${prefix}/include
+Libs: -L${prefix}/lib -lroad_geometry -lroad_yield_config -lroad_yield_core
+Requires: actionlib dynamic_obstacles dynamic_reconfigure geometry_msgs move_base_msgs roscpp std_msgs teb_local_planner tf2 tf2_geometry_msgs tf2_ros

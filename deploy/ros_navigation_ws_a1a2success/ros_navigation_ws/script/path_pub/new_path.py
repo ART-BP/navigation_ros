@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 import argparse
-import csv
 import math
-import os
 import threading
 
 import actionlib
@@ -35,95 +33,11 @@ def yaw_to_quaternion(yaw):
     return Quaternion(x=0.0, y=0.0, z=math.sin(half), w=math.cos(half))
 
 
-def parse_csv_number(value, column, row_number):
-    if value is None or not str(value).strip():
-        raise ValueError("CSV row {} has an empty '{}' value".format(row_number, column))
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        raise ValueError(
-            "CSV row {} has an invalid '{}' value: {!r}".format(row_number, column, value)
-        )
-    if not math.isfinite(number):
-        raise ValueError(
-            "CSV row {} has a non-finite '{}' value: {!r}".format(row_number, column, value)
-        )
-    return number
-
-
-def load_waypoint_csv(path, default_frame):
-    waypoints = []
-    with open(path, "r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        if reader.fieldnames is None:
-            raise ValueError("Waypoint CSV has no header: {}".format(path))
-
-        reader.fieldnames = [name.strip() if name is not None else "" for name in reader.fieldnames]
-        required_columns = {"mx", "my", "yaw"}
-        missing = sorted(required_columns.difference(reader.fieldnames))
-        if missing:
-            raise ValueError(
-                "Waypoint CSV is missing required columns {}: {}".format(
-                    ", ".join(missing), path
-                )
-            )
-
-        for row_number, row in enumerate(reader, start=2):
-            if None in row:
-                raise ValueError("CSV row {} has more values than the header".format(row_number))
-            if not any(value is not None and str(value).strip() for value in row.values()):
-                continue
-
-            waypoint = {
-                "name": "waypoint_{}".format(len(waypoints) + 1),
-                "x": parse_csv_number(row.get("mx"), "mx", row_number),
-                "y": parse_csv_number(row.get("my"), "my", row_number),
-                "yaw_deg": parse_csv_number(row.get("yaw"), "yaw", row_number),
-                "frame_id": default_frame,
-            }
-            command = (row.get("cmd") or "").strip()
-            if command:
-                waypoint["cmd"] = command
-            waypoints.append(waypoint)
-
-    if not waypoints:
-        raise ValueError("Waypoint CSV contains no waypoints: {}".format(path))
-    return waypoints
-
-
 def load_yaml(path):
-    config_path = os.path.abspath(os.path.expanduser(path))
-    with open(config_path, "r") as f:
+    with open(path, "r") as f:
         data = yaml.safe_load(f) or {}
-
-    waypoint_file = data.get("waypoint_file")
-    if waypoint_file:
-        if not isinstance(waypoint_file, str):
-            raise ValueError("YAML 'waypoint_file' must be a file name or path")
-        waypoint_path = os.path.expanduser(waypoint_file)
-        if not os.path.isabs(waypoint_path):
-            waypoint_path = os.path.join(os.path.dirname(config_path), waypoint_path)
-        waypoint_path = os.path.abspath(waypoint_path)
-        data["waypoints"] = load_waypoint_csv(waypoint_path, data.get("frame_id", "map"))
-        data["_waypoint_file_path"] = waypoint_path
-    elif "waypoints" not in data or not isinstance(data["waypoints"], list):
-        raise ValueError("YAML must contain 'waypoint_file' or a legacy 'waypoints' list")
-
-    if not data["waypoints"]:
-        raise ValueError("No waypoints were loaded")
-
-    index_base = int(data.get("stair_index_base", 1))
-    stair_indices = list(data.get("stair_indices", []))
-    stair_indices.extend(data.get("stair_waypoint_indices", []))
-    first_index = index_base
-    last_index = index_base + len(data["waypoints"]) - 1
-    invalid_indices = [int(value) for value in stair_indices if not first_index <= int(value) <= last_index]
-    if invalid_indices:
-        raise ValueError(
-            "Stair waypoint indices are outside [{}, {}]: {}".format(
-                first_index, last_index, invalid_indices
-            )
-        )
+    if "waypoints" not in data or not isinstance(data["waypoints"], list):
+        raise ValueError("YAML must contain a 'waypoints' list")
     return data
 
 
@@ -470,13 +384,6 @@ def run_waypoints(config):
     pose_lookup = RobotPoseLookup(robot_base_frame, pose_lookup_timeout)
     move_base = actionlib.SimpleActionClient(move_base_action, MoveBaseAction)
 
-    if config.get("_waypoint_file_path"):
-        rospy.loginfo(
-            "Loaded %d waypoints from CSV (yaw unit: degrees): %s",
-            len(config["waypoints"]),
-            config["_waypoint_file_path"],
-        )
-
     rospy.loginfo("Waiting for move_base action server: %s", move_base_action)
     if not move_base.wait_for_server(rospy.Duration(wait_server_timeout)):
         raise RuntimeError("move_base action server is not available: {}".format(move_base_action))
@@ -553,10 +460,8 @@ def run_waypoints(config):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Run move_base waypoints loaded from a CSV configured by YAML."
-    )
-    parser.add_argument("config", help="YAML file containing waypoint_file and stair indices")
+    parser = argparse.ArgumentParser(description="Run move_base waypoints with optional stair mode segments.")
+    parser.add_argument("config", help="Waypoint YAML file")
     return parser.parse_args(rospy.myargv()[1:])
 
 

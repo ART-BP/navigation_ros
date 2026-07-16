@@ -8,10 +8,6 @@ goal_timeout: 120.0
 continue_on_failure: false
 frame_id: map
 
-# CSV columns: mx,my,yaw,cmd. The yaw column is in degrees.
-# A relative file name is resolved from this YAML file's directory.
-waypoint_file: patrol_waypoint_line_a4.csv
-
 # For normal waypoints, send the next goal once the robot is this close.
 # Stair waypoints and the final waypoint still wait for the goal result.
 near_goal_advance_distance: 3.0
@@ -25,9 +21,9 @@ robot_base_frame: base_link
 pose_lookup_timeout: 0.1
 
 # Most waypoints are normal. Mark only the stair targets here.
-# Indices are 1-based by default: waypoint #34 in the CSV is the stair segment.
+# Indices are 1-based by default: waypoint #2 below is the stair segment.
 stair_index_base: 1
-stair_indices: [34]
+stair_indices: []
 
 stair_teb_params:
   max_vel_x: 0.65
@@ -37,3 +33,10 @@ stair_teb_params:
   weight_kinematics_forward_drive: 900.0
   weight_optimaltime: 0.5
   weight_viapoint: 8.0
+
+waypoints:
+  - [-6.73, 3.85, 0.0]
+  - [-5.42, 4.5, 0.0]
+  - [-3.70, 4.0, 0.0]
+  - [2.84, 3.46, 0.0]
+  - [4.1, 0.2, 0.0]
