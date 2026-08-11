@@ -1,6 +1,6 @@
 # 每座实体楼梯只在一个楼层下定义一次；反向路线由加载器自动倒序生成，
 # 且每个反向路径点的yaw会增加pi并归一化到[-pi, pi]。
-# node_index同时用于两个端点：node_id = floor_id + node_index。
+# 当前楼层入口使用node_index，反向端点使用99 - node_index。
 # route中的第三个数是yaw，单位为弧度。
 floors:
   B4:

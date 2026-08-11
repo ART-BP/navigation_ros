@@ -76,15 +76,23 @@ std::string directory_name(const std::string& path)
   return separator == 0 ? path.substr(0, 1) : path.substr(0, separator);
 }
 
+// 获取.yaml文件所在目录的上一级目录
+std::string ddirectory_name(const std::string& yaml_path)
+{
+  return directory_name(directory_name(yaml_path));
+}
+
+// 获取参数文件目录
 std::string resolve_path(const std::string& topology_path, const std::string& configured_path)
 {
   if (configured_path.empty() || configured_path[0] == '/')
   {
     return configured_path;
   }
-  return directory_name(topology_path) + "/" + configured_path;
+  return ddirectory_name(topology_path) + "/maps/" + configured_path;
 }
 
+// 读取拓扑图中楼层节点的位姿信息
 Pose2D read_pose(const YAML::Node& node, const std::string& context)
 {
   if (!node || !node.IsSequence() || node.size() != 3)
@@ -110,6 +118,7 @@ Pose2D read_pose(const YAML::Node& node, const std::string& context)
   return pose;
 }
 
+// 读取楼梯节点的索引
 int read_node_index(const YAML::Node& stair, const std::string& context)
 {
   const YAML::Node value = stair["node_index"];
@@ -127,6 +136,7 @@ int read_node_index(const YAML::Node& stair, const std::string& context)
   }
 }
 
+// 读取楼梯节点的路径
 std::vector<Pose2D> read_route(const YAML::Node& stair, const std::string& context)
 {
   const YAML::Node route = stair["route"];
@@ -144,11 +154,13 @@ std::vector<Pose2D> read_route(const YAML::Node& stair, const std::string& conte
   return primitives;
 }
 
+// 计算两点之间的欧几里得距离
 double distance(const Pose2D& from, const Pose2D& to)
 {
   return std::hypot(to.x - from.x, to.y - from.y);
 }
 
+// 计算路径的总成本
 double route_cost(const std::vector<Pose2D>& route)
 {
   double cost = 0.0;
@@ -159,20 +171,26 @@ double route_cost(const std::vector<Pose2D>& route)
   return cost;
 }
 
+// 获取反转后的路径
 std::vector<Pose2D> reversed_route(const std::vector<Pose2D>& route)
 {
-  const double pi = std::acos(-1.0);
+  const double pi = 3.1415926;
   std::vector<Pose2D> reversed;
   reversed.reserve(route.size());
   for (std::vector<Pose2D>::const_reverse_iterator it = route.rbegin(); it != route.rend(); ++it)
   {
     Pose2D pose = *it;
-    pose.yaw = std::atan2(std::sin(pose.yaw + pi), std::cos(pose.yaw + pi));
+    pose.yaw = pose.yaw + pi;
+    if (pose.yaw > pi)
+    {
+      pose.yaw -= 2 * pi;
+    }
     reversed.push_back(pose);
   }
   return reversed;
 }
 
+// 获取楼梯的类型
 EdgeType stair_type(int from_floor, int to_floor)
 {
   return to_floor > from_floor ? EdgeType::STAIR_UP : EdgeType::STAIR_DOWN;
@@ -228,8 +246,8 @@ const StairRoute& TopoGraph::stair_route(int entry_node_id) const
 {
   return stair_routes_.at(entry_node_id);
 }
-
-void TopoGraph::load_floor_maps(const YAML::Node& root, const std::string& topology_path)
+// 生成楼层节点的唯一ID，保存楼层地图路径，楼层节点和楼梯节点的路径信息
+void TopoGraph::load_floors(const YAML::Node& root, const std::string& topology_path)
 {
   const YAML::Node floors = root["floors"];
   if (!floors || !floors.IsMap() || floors.size() == 0)
@@ -262,11 +280,7 @@ void TopoGraph::load_floor_maps(const YAML::Node& root, const std::string& topol
       throw config_error("floors." + floor_name, "floor id collides with another floor");
     }
   }
-}
 
-void TopoGraph::load_nodes_and_edges(const YAML::Node& root)
-{
-  const YAML::Node floors = root["floors"];
   for (YAML::const_iterator floor_it = floors.begin(); floor_it != floors.end(); ++floor_it)
   {
     const std::string floor_name = floor_it->first.as<std::string>();
@@ -309,7 +323,9 @@ void TopoGraph::load_nodes_and_edges(const YAML::Node& root)
 
       const int index = read_node_index(stair, context);
       const int from_node = checked_node_id(from_floor, index, context + ".node_index");
-      const int to_node = checked_node_id(to_floor, index, context + ".node_index");
+      const int reverse_index = kNodesPerFloor - 1 - index;
+      const int to_node =
+          checked_node_id(to_floor, reverse_index, context + ".node_index");
       if (vertices_.count(from_node) != 0 || vertices_.count(to_node) != 0)
       {
         throw config_error(context + ".node_index", "node id is already used on one endpoint floor");
@@ -370,8 +386,7 @@ void TopoGraph::load_topology(const std::string& file_path)
   }
 
   TopoGraph loaded;
-  loaded.load_floor_maps(root, file_path);
-  loaded.load_nodes_and_edges(root);
+  loaded.load_floors(root, file_path);
   loaded.connect_floor_nodes();
 
   floor_map_paths_.swap(loaded.floor_map_paths_);

@@ -18,10 +18,10 @@ near_goal_advance_distance: 1.0
 goal_timeout: 120.0
 avoidance_goal_timeout: 120.0
 # During one yield event, retain only the nearest candidates. If distance to
-# the active shelter improves by less than 0.25 m over 8 s, blacklist that
+# the active shelter improves by less than 0.25 m over 5 s, blacklist that
 # shelter for the event and immediately try the next candidate.
 avoidance_candidate_limit: 5
-avoidance_progress_timeout: 8.0
+avoidance_progress_timeout: 5.0
 avoidance_min_progress: 0.25
 failure_retry_distance: 3.0
 failure_retry_count: 2
@@ -72,7 +72,7 @@ teb_reconfigure_ns: /move_base/TebLocalPlannerROS
 dynamic_reconfigure_timeout: 5.0
 stair_teb_params:
   max_vel_x: 0.65
-  max_vel_theta: 0.22
+  max_vel_theta: 0.55
   acc_lim_x: 0.70
   acc_lim_theta: 0.45
   weight_kinematics_forward_drive: 900.0

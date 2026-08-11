@@ -37,8 +37,7 @@ public:
   const StairRoute& stair_route(int entry_node_id) const;
 
 private:
-  void load_floor_maps(const YAML::Node& root, const std::string& topology_path);
-  void load_nodes_and_edges(const YAML::Node& root);
+  void load_floors(const YAML::Node& root, const std::string& topology_path);
   void connect_floor_nodes();
 
   std::unordered_map<int, std::string> floor_map_paths_;
