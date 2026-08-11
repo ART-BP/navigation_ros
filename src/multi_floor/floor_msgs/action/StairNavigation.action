@@ -1,0 +1,19 @@
+# Goal
+int32 entry_node_id
+int32 start_floor
+int32 goal_floor
+geometry_msgs/Pose[] primitives
+
+---
+# Result
+bool success
+string message
+
+---
+# Feedback
+uint8 CHECK_START=0
+uint8 TRACKING=1
+uint8 ALIGNING=2
+
+uint8 state
+string progress

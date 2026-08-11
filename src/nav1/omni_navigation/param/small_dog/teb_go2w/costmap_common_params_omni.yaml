@@ -15,13 +15,13 @@ obstacle_layer:
   combination_method: 1
 
   obstacle_range: 3.0
-  raytrace_range: 3.0
-  inf_is_valid: true
+  raytrace_range: 4.0
   observation_sources: scan
   scan: {
     data_type: LaserScan,
     topic: /scan,
     marking: true,
-    clearing: true
+    clearing: true,
+    inf_is_valid: true
   }
   

@@ -1,0 +1,10 @@
+geometry_msgs/PoseStamped start
+int32 start_floor
+
+geometry_msgs/PoseStamped goal
+int32 goal_floor
+
+---
+bool success
+NavigationRoute route
+string message
