@@ -18,7 +18,7 @@ public:
   bool execute(int entry_node_id,
                int from_floor,
                int to_floor,
-               const StairRoute& route,
+               const TopologyEdge& edge,
                const std::function<bool()>& cancel_requested,
                std::string& message) override;
   void cancel() override;

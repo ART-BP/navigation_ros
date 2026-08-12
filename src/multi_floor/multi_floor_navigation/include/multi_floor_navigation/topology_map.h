@@ -1,9 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 
-#include "multi_floor_navigation/topo_struct.h"
+#include "multi_floor_navigation/topology_struct.h"
 
 namespace YAML
 {
@@ -19,30 +20,28 @@ constexpr int kNodesPerFloor = 100;
 constexpr int kFloorsPerArea = 100;
 constexpr int kOutdoorFloorId = 100 * kFloorsPerArea * kNodesPerFloor;
 
-class TopoGraph
+class TopologyGraph
 {
 public:
   static int floor_id_from_name(const std::string& floor_name);
+  static int floor_id_from_node_id(int node_id);
   static int node_id(int floor_id, int node_index);
 
   // 加载成功后替换当前图；配置错误时当前图保持不变。
   void load_topology(const std::string& file_path);
 
-  const std::unordered_map<int, std::string>& floor_map_paths() const;
-  const std::unordered_map<int, Vertex>& vertices() const;
-  const std::unordered_map<int, StairRoute>& stair_routes() const;
-
+  const std::unordered_map<int, Floor>& floors() const;
+  bool has_floor(int floor_id) const;
+  std::size_t node_count() const;
+  const Floor& floor(int floor_id) const;
   const std::string& floor_map_path(int floor_id) const;
-  const Vertex& vertex(int requested_node_id) const;
-  const StairRoute& stair_route(int entry_node_id) const;
+  const TopologyNode& node(int requested_node_id) const;
+  const TopologyEdge& edge(int from_node_id, int to_node_id) const;
 
 private:
   void load_floors(const YAML::Node& root, const std::string& topology_path);
-  void connect_floor_nodes();
 
-  std::unordered_map<int, std::string> floor_map_paths_;
-  std::unordered_map<int, Vertex> vertices_;
-  std::unordered_map<int, StairRoute> stair_routes_;
+  std::unordered_map<int, Floor> floors_;
 };
 
 }  // namespace multi_floor_navigation

@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -39,12 +38,14 @@ T parameter(ros::NodeHandle& node, const std::string& name, const T& default_val
   return value;
 }
 
-Pose2D pose_from_message(const geometry_msgs::Pose& message)
+Pose3D pose_from_message(const geometry_msgs::Pose& message)
 {
-  Pose2D pose;
+  Pose3D pose;
   pose.x = message.position.x;
   pose.y = message.position.y;
-  pose.yaw = tf2::getYaw(message.orientation);
+  pose.z = message.position.z;
+  // 楼梯路径点的orientation不参与控制；每段yaw由相邻点的连线计算。
+  pose.yaw = 0.0;
   return pose;
 }
 
@@ -100,10 +101,13 @@ StairController::StairController(ros::NodeHandle& node, ros::NodeHandle& private
   , start_position_tolerance_(parameter<double>(private_node_, "start_position_tolerance", 0.20))
   , start_yaw_tolerance_(parameter<double>(private_node_, "start_yaw_tolerance", 0.15))
   , waypoint_position_tolerance_(parameter<double>(private_node_, "waypoint_position_tolerance", 0.12))
-  , waypoint_yaw_tolerance_(parameter<double>(private_node_, "waypoint_yaw_tolerance", 0.12))
   , lookahead_distance_(parameter<double>(private_node_, "lookahead_distance", 0.35))
+  , centerline_slowdown_distance_(
+        parameter<double>(private_node_, "centerline_slowdown_distance", 0.12))
+  , max_centerline_deviation_(
+        parameter<double>(private_node_, "max_centerline_deviation", 0.25))
   , min_linear_velocity_(parameter<double>(private_node_, "min_linear_velocity", 0.04))
-  , max_linear_velocity_(parameter<double>(private_node_, "max_linear_velocity", 0.25))
+  , max_linear_velocity_(parameter<double>(private_node_, "max_linear_velocity", 0.45))
   , max_angular_velocity_(parameter<double>(private_node_, "max_angular_velocity", 0.8))
   , heading_stop_threshold_(parameter<double>(private_node_, "heading_stop_threshold", 0.75))
   , segment_timeout_(parameter<double>(private_node_, "segment_timeout", 60.0))
@@ -122,7 +126,8 @@ StairController::StairController(ros::NodeHandle& node, ros::NodeHandle& private
 {
   if (control_rate_ <= 0.0 || tf_timeout_ < 0.0 || start_position_tolerance_ <= 0.0 ||
       start_yaw_tolerance_ <= 0.0 || waypoint_position_tolerance_ <= 0.0 ||
-      waypoint_yaw_tolerance_ <= 0.0 || lookahead_distance_ <= 0.0 ||
+      lookahead_distance_ <= 0.0 || centerline_slowdown_distance_ < 0.0 ||
+      max_centerline_deviation_ <= centerline_slowdown_distance_ ||
       min_linear_velocity_ < 0.0 || max_linear_velocity_ <= 0.0 ||
       min_linear_velocity_ > max_linear_velocity_ || max_angular_velocity_ <= 0.0)
   {
@@ -149,6 +154,7 @@ bool StairController::lookup_robot_pose(RobotPose& pose, std::string& message)
         tf_buffer_.lookupTransform(map_frame_, base_frame_, ros::Time(0), ros::Duration(tf_timeout_));
     pose.x = transform.transform.translation.x;
     pose.y = transform.transform.translation.y;
+    pose.z = transform.transform.translation.z;
     pose.yaw = tf2::getYaw(transform.transform.rotation);
     return true;
   }
@@ -185,8 +191,99 @@ bool StairController::preempt_requested()
   return action_server_.isPreemptRequested() || !ros::ok();
 }
 
-bool StairController::track_segment(const Pose2D& start,
-                                    const Pose2D& goal,
+bool StairController::align_to_start(const Pose3D& start,
+                                     double segment_yaw,
+                                     std::size_t start_index,
+                                     std::size_t point_count,
+                                     std::string& message)
+{
+  linear_pid_.reset();
+  angular_pid_.reset();
+  bool aligning_yaw = false;
+  const ros::WallTime alignment_started = ros::WallTime::now();
+  ros::WallTime previous_update = alignment_started;
+  ros::WallRate rate(control_rate_);
+
+  while (ros::ok())
+  {
+    if (preempt_requested())
+    {
+      publish_stop();
+      message = "stair execution preempted while aligning segment start";
+      return false;
+    }
+    if (segment_timeout_ > 0.0 &&
+        (ros::WallTime::now() - alignment_started).toSec() >= segment_timeout_)
+    {
+      publish_stop();
+      message = "stair start alignment timeout at point " + std::to_string(start_index + 1);
+      return false;
+    }
+
+    RobotPose robot;
+    if (!lookup_robot_pose(robot, message))
+    {
+      publish_stop();
+      return false;
+    }
+
+    const ros::WallTime now = ros::WallTime::now();
+    const double dt = (now - previous_update).toSec();
+    previous_update = now;
+    const double position_error = position_distance(robot.x, robot.y, start.x, start.y);
+    geometry_msgs::Twist command;
+
+    publish_feedback(floor_msgs::StairNavigationFeedback::ALIGNING,
+                     start_index + 1,
+                     point_count);
+
+    if (position_error > start_position_tolerance_)
+    {
+      aligning_yaw = false;
+      const double desired_yaw = std::atan2(start.y - robot.y, start.x - robot.x);
+      const double yaw_error = normalize_angle(desired_yaw - robot.yaw);
+      double linear_velocity = std::max(0.0, linear_pid_.update(position_error, dt));
+      if (linear_velocity > 0.0 && linear_velocity < min_linear_velocity_)
+      {
+        linear_velocity = min_linear_velocity_;
+      }
+      linear_velocity *= std::max(0.0, std::cos(yaw_error));
+      if (std::fabs(yaw_error) >= heading_stop_threshold_)
+      {
+        linear_velocity = 0.0;
+      }
+      command.linear.x = clamp(linear_velocity, 0.0, max_linear_velocity_);
+      command.angular.z = angular_pid_.update(yaw_error, dt);
+    }
+    else
+    {
+      if (!aligning_yaw)
+      {
+        linear_pid_.reset();
+        angular_pid_.reset();
+        aligning_yaw = true;
+      }
+      const double yaw_error = normalize_angle(segment_yaw - robot.yaw);
+      if (std::fabs(yaw_error) <= start_yaw_tolerance_)
+      {
+        publish_stop();
+        message = "aligned stair segment start " + std::to_string(start_index + 1);
+        return true;
+      }
+      command.angular.z = angular_pid_.update(yaw_error, dt);
+    }
+
+    cmd_vel_publisher_.publish(command);
+    rate.sleep();
+  }
+
+  publish_stop();
+  message = "ROS shutdown during stair start alignment";
+  return false;
+}
+
+bool StairController::track_segment(const Pose3D& start,
+                                    const Pose3D& goal,
                                     std::size_t target_index,
                                     std::size_t point_count,
                                     std::string& message)
@@ -197,9 +294,18 @@ bool StairController::track_segment(const Pose2D& start,
   const double unit_x = segment_length > 1e-9 ? segment_x / segment_length : 0.0;
   const double unit_y = segment_length > 1e-9 ? segment_y / segment_length : 0.0;
 
+  if (segment_length <= 1e-9)
+  {
+    publish_stop();
+    publish_feedback(floor_msgs::StairNavigationFeedback::TRACKING,
+                     target_index + 1,
+                     point_count);
+    message = "reached stair route point " + std::to_string(target_index + 1);
+    return true;
+  }
+
   linear_pid_.reset();
   angular_pid_.reset();
-  bool alignment_started = false;
   const ros::WallTime segment_started = ros::WallTime::now();
   ros::WallTime previous_update = segment_started;
   ros::WallRate rate(control_rate_);
@@ -233,58 +339,60 @@ bool StairController::track_segment(const Pose2D& start,
     const double goal_distance = position_distance(robot.x, robot.y, goal.x, goal.y);
     geometry_msgs::Twist command;
 
-    if (goal_distance <= waypoint_position_tolerance_ || segment_length <= 1e-9)
+    if (goal_distance <= waypoint_position_tolerance_)
     {
-      if (!alignment_started)
-      {
-        angular_pid_.reset();
-        alignment_started = true;
-      }
-      const double yaw_error = normalize_angle(goal.yaw - robot.yaw);
-      publish_feedback(floor_msgs::StairNavigationFeedback::ALIGNING,
-                       target_index,
-                       point_count);
-      if (std::fabs(yaw_error) <= waypoint_yaw_tolerance_)
-      {
-        publish_stop();
-        publish_feedback(floor_msgs::StairNavigationFeedback::ALIGNING,
-                         target_index + 1,
-                         point_count);
-        message = "reached stair route point " + std::to_string(target_index + 1);
-        return true;
-      }
-      command.angular.z = angular_pid_.update(yaw_error, dt);
-    }
-    else
-    {
-      alignment_started = false;
-      const double projection = clamp((robot.x - start.x) * unit_x +
-                                          (robot.y - start.y) * unit_y,
-                                      0.0,
-                                      segment_length);
-      const double lookahead = std::min(segment_length, projection + lookahead_distance_);
-      const double target_x = start.x + lookahead * unit_x;
-      const double target_y = start.y + lookahead * unit_y;
-      const double desired_yaw = std::atan2(target_y - robot.y, target_x - robot.x);
-      const double yaw_error = normalize_angle(desired_yaw - robot.yaw);
-
-      double linear_velocity = std::max(0.0, linear_pid_.update(goal_distance, dt));
-      if (linear_velocity > 0.0 && linear_velocity < min_linear_velocity_)
-      {
-        linear_velocity = min_linear_velocity_;
-      }
-      linear_velocity *= std::max(0.0, std::cos(yaw_error));
-      if (std::fabs(yaw_error) >= heading_stop_threshold_)
-      {
-        linear_velocity = 0.0;
-      }
-
-      command.linear.x = clamp(linear_velocity, 0.0, max_linear_velocity_);
-      command.angular.z = angular_pid_.update(yaw_error, dt);
+      publish_stop();
       publish_feedback(floor_msgs::StairNavigationFeedback::TRACKING,
-                       target_index,
+                       target_index + 1,
                        point_count);
+      message = "reached stair route point " + std::to_string(target_index + 1);
+      return true;
     }
+
+    const double along_track = (robot.x - start.x) * unit_x +
+                               (robot.y - start.y) * unit_y;
+    const double cross_track = -(robot.x - start.x) * unit_y +
+                               (robot.y - start.y) * unit_x;
+    const double absolute_cross_track = std::fabs(cross_track);
+    if (absolute_cross_track > max_centerline_deviation_)
+    {
+      publish_stop();
+      message = "centerline deviation " + std::to_string(absolute_cross_track) +
+                " exceeds limit " + std::to_string(max_centerline_deviation_) +
+                " on segment ending at point " + std::to_string(target_index + 1);
+      return false;
+    }
+
+    const double projection = clamp(along_track, 0.0, segment_length);
+    const double lookahead = std::min(segment_length, projection + lookahead_distance_);
+    const double target_x = start.x + lookahead * unit_x;
+    const double target_y = start.y + lookahead * unit_y;
+    const double desired_yaw = std::atan2(target_y - robot.y, target_x - robot.x);
+    const double yaw_error = normalize_angle(desired_yaw - robot.yaw);
+
+    double linear_velocity = std::max(0.0, linear_pid_.update(goal_distance, dt));
+    if (linear_velocity > 0.0 && linear_velocity < min_linear_velocity_)
+    {
+      linear_velocity = min_linear_velocity_;
+    }
+    linear_velocity *= std::max(0.0, std::cos(yaw_error));
+    if (absolute_cross_track > centerline_slowdown_distance_)
+    {
+      const double centerline_scale =
+          (max_centerline_deviation_ - absolute_cross_track) /
+          (max_centerline_deviation_ - centerline_slowdown_distance_);
+      linear_velocity *= clamp(centerline_scale, 0.0, 1.0);
+    }
+    if (std::fabs(yaw_error) >= heading_stop_threshold_)
+    {
+      linear_velocity = 0.0;
+    }
+
+    command.linear.x = clamp(linear_velocity, 0.0, max_linear_velocity_);
+    command.angular.z = angular_pid_.update(yaw_error, dt);
+    publish_feedback(floor_msgs::StairNavigationFeedback::TRACKING,
+                     target_index,
+                     point_count);
 
     cmd_vel_publisher_.publish(command);
     rate.sleep();
@@ -309,43 +417,51 @@ void StairController::execute_goal(const floor_msgs::StairNavigationGoalConstPtr
     return;
   }
 
-  std::vector<Pose2D> route;
+  std::vector<Pose3D> route;
   route.reserve(goal->primitives.size());
   for (const geometry_msgs::Pose& primitive : goal->primitives)
   {
     route.push_back(pose_from_message(primitive));
   }
 
-  std::string message;
-  RobotPose robot;
-  if (!lookup_robot_pose(robot, message))
-  {
-    publish_stop();
-    result.success = false;
-    result.message = message;
-    action_server_.setAborted(result, message);
-    return;
-  }
-
-  const double start_position_error =
-      position_distance(robot.x, robot.y, route.front().x, route.front().y);
-  const double start_yaw_error = std::fabs(normalize_angle(route.front().yaw - robot.yaw));
-  publish_feedback(floor_msgs::StairNavigationFeedback::CHECK_START, 1, route.size());
-  if (start_position_error > start_position_tolerance_ || start_yaw_error > start_yaw_tolerance_)
-  {
-    std::ostringstream error;
-    error << "robot is not aligned at stair start: position_error=" << start_position_error
-          << " (limit=" << start_position_tolerance_ << "), yaw_error=" << start_yaw_error
-          << " (limit=" << start_yaw_tolerance_ << ")";
-    publish_stop();
-    result.success = false;
-    result.message = error.str();
-    action_server_.setAborted(result, result.message);
-    return;
-  }
-
   for (std::size_t target = 1; target < route.size(); ++target)
   {
+    if (position_distance(route[target - 1].x,
+                          route[target - 1].y,
+                          route[target].x,
+                          route[target].y) <= 1e-9)
+    {
+      result.success = false;
+      result.message = "consecutive stair route points must be different at point " +
+                       std::to_string(target + 1);
+      action_server_.setAborted(result, result.message);
+      return;
+    }
+  }
+
+  std::string message;
+  for (std::size_t target = 1; target < route.size(); ++target)
+  {
+    const double segment_yaw = std::atan2(route[target].y - route[target - 1].y,
+                                          route[target].x - route[target - 1].x);
+    if (!align_to_start(route[target - 1],
+                        segment_yaw,
+                        target - 1,
+                        route.size(),
+                        message))
+    {
+      result.success = false;
+      result.message = message;
+      if (action_server_.isPreemptRequested())
+      {
+        action_server_.setPreempted(result, message);
+      }
+      else
+      {
+        action_server_.setAborted(result, message);
+      }
+      return;
+    }
     if (!track_segment(route[target - 1], route[target], target, route.size(), message))
     {
       result.success = false;
@@ -363,7 +479,7 @@ void StairController::execute_goal(const floor_msgs::StairNavigationGoalConstPtr
   }
 
   publish_stop();
-  publish_feedback(floor_msgs::StairNavigationFeedback::ALIGNING, route.size(), route.size());
+  publish_feedback(floor_msgs::StairNavigationFeedback::TRACKING, route.size(), route.size());
   ros::WallDuration(1.0 / control_rate_).sleep();
   result.success = true;
   result.message = "stair route completed";

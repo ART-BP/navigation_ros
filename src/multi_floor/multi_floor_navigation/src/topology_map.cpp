@@ -1,7 +1,8 @@
-#include "multi_floor_navigation/topo_map.h"
+#include "multi_floor_navigation/topology_map.h"
 
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <stdexcept>
@@ -19,6 +20,7 @@ std::runtime_error config_error(const std::string& context, const std::string& m
   return std::runtime_error("invalid topology configuration at " + context + ": " + message);
 }
 
+// 将楼层名称转换为唯一的floor_id，B4 -> 10400
 int parse_floor_id(const std::string& name)
 {
   if (name == "outdoor")
@@ -56,6 +58,7 @@ int parse_floor_id(const std::string& name)
   return (area_index * kFloorsPerArea + floor_number) * kNodesPerFloor;
 }
 
+// 检查node_index是否在有效范围内，并生成唯一的node_id
 int checked_node_id(int floor_id, int node_index, const std::string& context)
 {
   if (node_index < 0 || node_index >= kNodesPerFloor)
@@ -82,7 +85,7 @@ std::string ddirectory_name(const std::string& yaml_path)
   return directory_name(directory_name(yaml_path));
 }
 
-// 获取参数文件目录
+// 获得配置文件中指定的地图路径，如果是相对路径，则将其解析为绝对路径
 std::string resolve_path(const std::string& topology_path, const std::string& configured_path)
 {
   if (configured_path.empty() || configured_path[0] == '/')
@@ -92,30 +95,48 @@ std::string resolve_path(const std::string& topology_path, const std::string& co
   return ddirectory_name(topology_path) + "/maps/" + configured_path;
 }
 
-// 读取拓扑图中楼层节点的位姿信息
-Pose2D read_pose(const YAML::Node& node, const std::string& context)
+// 楼梯配置只保存位置，行驶方向由相邻两点的连线计算。
+Pose3D read_route_point(const YAML::Node& node, const std::string& context)
 {
   if (!node || !node.IsSequence() || node.size() != 3)
   {
-    throw config_error(context, "expected [x, y, yaw]");
+    throw config_error(context, "expected [x, y, z]");
   }
 
-  Pose2D pose;
+  Pose3D pose;
   try
   {
     pose.x = node[0].as<double>();
     pose.y = node[1].as<double>();
-    pose.yaw = node[2].as<double>();
+    pose.z = node[2].as<double>();
+    pose.yaw = 0.0;
   }
   catch (const YAML::Exception&)
   {
-    throw config_error(context, "x, y and yaw must be numeric");
+    throw config_error(context, "x, y and z must be numeric");
   }
-  if (!std::isfinite(pose.x) || !std::isfinite(pose.y) || !std::isfinite(pose.yaw))
+  if (!std::isfinite(pose.x) || !std::isfinite(pose.y) || !std::isfinite(pose.z))
   {
-    throw config_error(context, "x, y and yaw must be finite");
+    throw config_error(context, "x, y and z must be finite");
   }
   return pose;
+}
+
+void assign_route_headings(std::vector<Pose3D>& route, const std::string& context)
+{
+  for (std::size_t i = 0; i + 1 < route.size(); ++i)
+  {
+    const double dx = route[i + 1].x - route[i].x;
+    const double dy = route[i + 1].y - route[i].y;
+    if (std::hypot(dx, dy) <= 1e-9)
+    {
+      throw config_error(context + "[" + std::to_string(i + 1) + "]",
+                         "consecutive route points must be different");
+    }
+    route[i].yaw = std::atan2(dy, dx);
+  }
+  // 最后一个点只作为位置终点，不需要有效yaw。
+  route.back().yaw = 0.0;
 }
 
 // 读取楼梯节点的索引
@@ -137,7 +158,7 @@ int read_node_index(const YAML::Node& stair, const std::string& context)
 }
 
 // 读取楼梯节点的路径
-std::vector<Pose2D> read_route(const YAML::Node& stair, const std::string& context)
+std::vector<Pose3D> read_route(const YAML::Node& stair, const std::string& context)
 {
   const YAML::Node route = stair["route"];
   if (!route || !route.IsSequence() || route.size() < 2)
@@ -145,23 +166,26 @@ std::vector<Pose2D> read_route(const YAML::Node& stair, const std::string& conte
     throw config_error(context + ".route", "expected at least an entrance and an exit pose");
   }
 
-  std::vector<Pose2D> primitives;
+  std::vector<Pose3D> primitives;
   primitives.reserve(route.size());
   for (std::size_t i = 0; i < route.size(); ++i)
   {
-    primitives.push_back(read_pose(route[i], context + ".route[" + std::to_string(i) + "]"));
+    primitives.push_back(
+        read_route_point(route[i], context + ".route[" + std::to_string(i) + "]"));
   }
+  assign_route_headings(primitives, context + ".route");
   return primitives;
 }
 
 // 计算两点之间的欧几里得距离
-double distance(const Pose2D& from, const Pose2D& to)
+double distance(const Pose3D& from, const Pose3D& to)
 {
+  // 当前拓扑代价仍为平面距离，z只存储，不参与计算。
   return std::hypot(to.x - from.x, to.y - from.y);
 }
 
 // 计算路径的总成本
-double route_cost(const std::vector<Pose2D>& route)
+double route_cost(const std::vector<Pose3D>& route)
 {
   double cost = 0.0;
   for (std::size_t i = 1; i < route.size(); ++i)
@@ -172,21 +196,10 @@ double route_cost(const std::vector<Pose2D>& route)
 }
 
 // 获取反转后的路径
-std::vector<Pose2D> reversed_route(const std::vector<Pose2D>& route)
+std::vector<Pose3D> reversed_route(const std::vector<Pose3D>& route)
 {
-  const double pi = 3.1415926;
-  std::vector<Pose2D> reversed;
-  reversed.reserve(route.size());
-  for (std::vector<Pose2D>::const_reverse_iterator it = route.rbegin(); it != route.rend(); ++it)
-  {
-    Pose2D pose = *it;
-    pose.yaw = pose.yaw + pi;
-    if (pose.yaw > pi)
-    {
-      pose.yaw -= 2 * pi;
-    }
-    reversed.push_back(pose);
-  }
+  std::vector<Pose3D> reversed(route.rbegin(), route.rend());
+  assign_route_headings(reversed, "generated reverse route");
   return reversed;
 }
 
@@ -196,58 +209,77 @@ EdgeType stair_type(int from_floor, int to_floor)
   return to_floor > from_floor ? EdgeType::STAIR_UP : EdgeType::STAIR_DOWN;
 }
 
-void add_edge(std::unordered_map<int, Vertex>& vertices,
-              int from,
-              int to,
-              EdgeType type,
-              double cost)
-{
-  vertices.at(from).edges.push_back(TopoEdge{to, type, cost});
-}
-
 }  // namespace
 
-int TopoGraph::floor_id_from_name(const std::string& floor_name)
+int TopologyGraph::floor_id_from_name(const std::string& floor_name)
 {
   return parse_floor_id(floor_name);
 }
 
-int TopoGraph::node_id(int floor_id, int node_index)
+int TopologyGraph::floor_id_from_node_id(int requested_node_id)
+{
+  if (requested_node_id < 0)
+  {
+    throw std::out_of_range("node id must be non-negative");
+  }
+  return (requested_node_id / kNodesPerFloor) * kNodesPerFloor;
+}
+
+int TopologyGraph::node_id(int floor_id, int node_index)
 {
   return checked_node_id(floor_id, node_index, "node_index");
 }
 
-const std::unordered_map<int, std::string>& TopoGraph::floor_map_paths() const
+const std::unordered_map<int, Floor>& TopologyGraph::floors() const
 {
-  return floor_map_paths_;
+  return floors_;
 }
 
-const std::unordered_map<int, Vertex>& TopoGraph::vertices() const
+bool TopologyGraph::has_floor(int floor_id) const
 {
-  return vertices_;
+  return floors_.count(floor_id) != 0;
 }
 
-const std::unordered_map<int, StairRoute>& TopoGraph::stair_routes() const
+std::size_t TopologyGraph::node_count() const
 {
-  return stair_routes_;
+  std::size_t count = 0;
+  for (const auto& item : floors_)
+  {
+    count += item.second.nodes.size();
+  }
+  return count;
 }
 
-const std::string& TopoGraph::floor_map_path(int floor_id) const
+const Floor& TopologyGraph::floor(int floor_id) const
 {
-  return floor_map_paths_.at(floor_id);
+  return floors_.at(floor_id);
 }
 
-const Vertex& TopoGraph::vertex(int requested_node_id) const
+const std::string& TopologyGraph::floor_map_path(int floor_id) const
 {
-  return vertices_.at(requested_node_id);
+  return floor(floor_id).map_path;
 }
 
-const StairRoute& TopoGraph::stair_route(int entry_node_id) const
+const TopologyNode& TopologyGraph::node(int requested_node_id) const
 {
-  return stair_routes_.at(entry_node_id);
+  return floor(floor_id_from_node_id(requested_node_id)).nodes.at(requested_node_id);
+}
+
+const TopologyEdge& TopologyGraph::edge(int from_node_id, int to_node_id) const
+{
+  const std::vector<TopologyEdge>& edges = node(from_node_id).edges;
+  const auto found = std::find_if(edges.begin(), edges.end(), [to_node_id](const TopologyEdge& edge) {
+    return edge.to_node_id == to_node_id;
+  });
+  if (found == edges.end())
+  {
+    throw std::out_of_range("no topology edge from node " + std::to_string(from_node_id) +
+                            " to node " + std::to_string(to_node_id));
+  }
+  return *found;
 }
 // 生成楼层节点的唯一ID，保存楼层地图路径，楼层节点和楼梯节点的路径信息
-void TopoGraph::load_floors(const YAML::Node& root, const std::string& topology_path)
+void TopologyGraph::load_floors(const YAML::Node& root, const std::string& topology_path)
 {
   const YAML::Node floors = root["floors"];
   if (!floors || !floors.IsMap() || floors.size() == 0)
@@ -255,6 +287,7 @@ void TopoGraph::load_floors(const YAML::Node& root, const std::string& topology_
     throw config_error("floors", "expected a non-empty mapping");
   }
 
+  // 读取楼层信息，保存楼层地图路径
   for (YAML::const_iterator it = floors.begin(); it != floors.end(); ++it)
   {
     if (!it->first.IsScalar() || !it->second.IsMap())
@@ -275,12 +308,15 @@ void TopoGraph::load_floors(const YAML::Node& root, const std::string& topology_
     {
       throw config_error("floors." + floor_name + ".map", "path must not be empty");
     }
-    if (!floor_map_paths_.emplace(floor_id, resolve_path(topology_path, map_path)).second)
+    if (!floors_.emplace(
+            floor_id,
+            Floor{floor_id, resolve_path(topology_path, map_path), {}}).second)
     {
       throw config_error("floors." + floor_name, "floor id collides with another floor");
     }
   }
 
+  // 读取楼梯信息，生成楼梯节点的唯一ID，保存楼梯节点的路径信息
   for (YAML::const_iterator floor_it = floors.begin(); floor_it != floors.end(); ++floor_it)
   {
     const std::string floor_name = floor_it->first.as<std::string>();
@@ -316,7 +352,7 @@ void TopoGraph::load_floors(const YAML::Node& root, const std::string& topology_
       {
         throw config_error(context + ".to", "a stair must connect different floors");
       }
-      if (floor_map_paths_.count(to_floor) == 0)
+      if (!has_floor(to_floor))
       {
         throw config_error(context + ".to", "target floor is not declared under floors");
       }
@@ -326,50 +362,28 @@ void TopoGraph::load_floors(const YAML::Node& root, const std::string& topology_
       const int reverse_index = kNodesPerFloor - 1 - index;
       const int to_node =
           checked_node_id(to_floor, reverse_index, context + ".node_index");
-      if (vertices_.count(from_node) != 0 || vertices_.count(to_node) != 0)
+      Floor& source_floor = floors_.at(from_floor);
+      Floor& target_floor = floors_.at(to_floor);
+      if (source_floor.nodes.count(from_node) != 0 || target_floor.nodes.count(to_node) != 0)
       {
         throw config_error(context + ".node_index", "node id is already used on one endpoint floor");
       }
 
-      const std::vector<Pose2D> route = read_route(stair, context);
-      const std::vector<Pose2D> reverse_route = reversed_route(route);
-      vertices_.emplace(from_node, Vertex{TopoNode{from_floor, route.front()}, {}});
-      vertices_.emplace(to_node, Vertex{TopoNode{to_floor, reverse_route.front()}, {}});
+      const std::vector<Pose3D> route = read_route(stair, context);
+      const std::vector<Pose3D> reverse_route = reversed_route(route);
+      source_floor.nodes.emplace(from_node, TopologyNode{route.front(), {}});
+      target_floor.nodes.emplace(to_node, TopologyNode{reverse_route.front(), {}});
 
       const double cost = route_cost(route);
-      add_edge(vertices_, from_node, to_node, stair_type(from_floor, to_floor), cost);
-      add_edge(vertices_, to_node, from_node, stair_type(to_floor, from_floor), cost);
-
-      stair_routes_.emplace(from_node, StairRoute{to_node, route});
-      stair_routes_.emplace(to_node, StairRoute{from_node, reverse_route});
+      source_floor.nodes.at(from_node).edges.push_back(
+          TopologyEdge{to_node, stair_type(from_floor, to_floor), cost, route});
+      target_floor.nodes.at(to_node).edges.push_back(
+          TopologyEdge{from_node, stair_type(to_floor, from_floor), cost, reverse_route});
     }
   }
 }
 
-void TopoGraph::connect_floor_nodes()
-{
-  std::unordered_map<int, std::vector<int>> nodes_by_floor;
-  for (const auto& item : vertices_)
-  {
-    nodes_by_floor[item.second.node.map_id].push_back(item.first);
-  }
-
-  for (const auto& floor : nodes_by_floor)
-  {
-    const std::vector<int>& ids = floor.second;
-    for (std::size_t i = 0; i < ids.size(); ++i)
-    {
-      for (std::size_t j = i + 1; j < ids.size(); ++j)
-      {
-        const double cost = distance(vertices_.at(ids[i]).node.pose, vertices_.at(ids[j]).node.pose);
-        add_edge(vertices_, ids[i], ids[j], EdgeType::FLAT_NAV, cost);
-        add_edge(vertices_, ids[j], ids[i], EdgeType::FLAT_NAV, cost);
-      }
-    }
-  }
-}
-
-void TopoGraph::load_topology(const std::string& file_path)
+void TopologyGraph::load_topology(const std::string& file_path)
 {
   YAML::Node root;
   try
@@ -385,13 +399,9 @@ void TopoGraph::load_topology(const std::string& file_path)
     throw config_error("root", "expected a mapping");
   }
 
-  TopoGraph loaded;
+  TopologyGraph loaded;
   loaded.load_floors(root, file_path);
-  loaded.connect_floor_nodes();
-
-  floor_map_paths_.swap(loaded.floor_map_paths_);
-  vertices_.swap(loaded.vertices_);
-  stair_routes_.swap(loaded.stair_routes_);
+  floors_.swap(loaded.floors_);
 }
 
 }  // namespace multi_floor_navigation

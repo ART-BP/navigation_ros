@@ -13,7 +13,7 @@
 #include "multi_floor_navigation/map_switcher.h"
 #include "multi_floor_navigation/route_executor.h"
 #include "multi_floor_navigation/stair_action_client.h"
-#include "multi_floor_navigation/topo_map.h"
+#include "multi_floor_navigation/topology_map.h"
 #include "multi_floor_navigation/topology_planner.h"
 
 namespace multi_floor_navigation
@@ -54,7 +54,7 @@ public:
     private_node_.param("segment_timeout", segment_timeout, segment_timeout);
 
     graph_.load_topology(topology_file);
-    const int initial_floor = TopoGraph::floor_id_from_name(initial_floor_name);
+    const int initial_floor = TopologyGraph::floor_id_from_name(initial_floor_name);
 
     planner_.reset(new TopologyPlanner(graph_, map_frame));
     map_switcher_.reset(
@@ -78,7 +78,7 @@ public:
         false));
     navigation_server_->start();
 
-    ROS_INFO_STREAM("multi_floor_navigation loaded " << graph_.vertices().size()
+    ROS_INFO_STREAM("multi_floor_navigation loaded " << graph_.node_count()
                                                        << " topology nodes from " << topology_file);
     ROS_INFO_STREAM("Stair execution is connected to action server " << stair_action);
   }
@@ -91,10 +91,22 @@ private:
   {
     try
     {
+      int start_floor = request.start_floor;
+      int goal_floor = request.goal_floor;
+
+
+      if(start_floor < 0){
+        start_floor = map_switcher_->current_floor();
+      }
+
+      if(goal_floor < 0){
+        goal_floor = map_switcher_->current_floor();
+      }
+
       response.success = planner_->plan(request.start,
-                                        request.start_floor,
+                                        start_floor,
                                         request.goal,
-                                        request.goal_floor,
+                                        goal_floor,
                                         response.route,
                                         response.message);
     }
@@ -118,10 +130,22 @@ private:
     std::string message;
     try
     {
+      int start_floor = goal->start_floor;
+      int goal_floor = goal->goal_floor;
+
+
+      if(start_floor < 0){
+        start_floor = map_switcher_->current_floor();
+      }
+
+      if(goal_floor < 0){
+        goal_floor = map_switcher_->current_floor();
+      }
+
       if (!planner_->plan(goal->start,
-                          goal->start_floor,
+                          start_floor,
                           goal->goal,
-                          goal->goal_floor,
+                          goal_floor,
                           result.route,
                           message))
       {
@@ -170,7 +194,7 @@ private:
 
   ros::NodeHandle node_;
   ros::NodeHandle private_node_;
-  TopoGraph graph_;
+  TopologyGraph graph_;
   std::unique_ptr<TopologyPlanner> planner_;
   std::unique_ptr<MapSwitcher> map_switcher_;
   std::unique_ptr<StairActionClient> stair_executor_;

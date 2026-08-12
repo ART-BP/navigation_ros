@@ -29,14 +29,14 @@ double distance(double from_x, double from_y, double to_x, double to_y)
   return std::hypot(to_x - from_x, to_y - from_y);
 }
 
-geometry_msgs::PoseStamped node_pose(const TopoNode& node, const std::string& frame_id)
+geometry_msgs::PoseStamped node_pose(const TopologyNode& node, const std::string& frame_id)
 {
   geometry_msgs::PoseStamped pose;
   pose.header.stamp = ros::Time::now();
   pose.header.frame_id = frame_id;
   pose.pose.position.x = node.pose.x;
   pose.pose.position.y = node.pose.y;
-  pose.pose.position.z = 0.0;
+  pose.pose.position.z = node.pose.z;
   tf2::Quaternion orientation;
   orientation.setRPY(0.0, 0.0, node.pose.yaw);
   pose.pose.orientation = tf2::toMsg(orientation);
@@ -70,7 +70,7 @@ std::uint8_t message_edge_type(EdgeType type)
 
 }  // namespace
 
-TopologyPlanner::TopologyPlanner(const TopoGraph& graph, std::string map_frame)
+TopologyPlanner::TopologyPlanner(const TopologyGraph& graph, std::string map_frame)
   : graph_(graph), map_frame_(std::move(map_frame))
 {
 }
@@ -88,17 +88,18 @@ bool TopologyPlanner::plan(const geometry_msgs::PoseStamped& start,
   route.start_floor = start_floor;
   route.goal_floor = goal_floor;
 
-  if (graph_.floor_map_paths().count(start_floor) == 0)
+  if (!graph_.has_floor(start_floor))
   {
     message = "start floor is not configured: " + std::to_string(start_floor);
     return false;
   }
-  if (graph_.floor_map_paths().count(goal_floor) == 0)
+  if (!graph_.has_floor(goal_floor))
   {
     message = "goal floor is not configured: " + std::to_string(goal_floor);
     return false;
   }
 
+  // 同层规划返回-1 -》 -1的平层段，跨层规划返回-1 -》 node_id的平层段，node_id -》 node_id的楼梯段，node_id -》 -1的平层段。
   if (start_floor == goal_floor)
   {
     route.segments.push_back(make_segment(floor_msgs::RouteSegment::FLAT,
@@ -121,16 +122,13 @@ bool TopologyPlanner::plan(const geometry_msgs::PoseStamped& start,
   std::unordered_map<int, double> costs;
   std::unordered_map<int, Parent> parents;
 
-  for (const auto& item : graph_.vertices())
+  // 初始化起点楼层的所有节点，计算从起点到这些节点的初始成本，并将它们加入优先队列
+  for (const auto& item : graph_.floor(start_floor).nodes)
   {
-    if (item.second.node.map_id != start_floor)
-    {
-      continue;
-    }
     const double initial_cost = distance(start.pose.position.x,
                                          start.pose.position.y,
-                                         item.second.node.pose.x,
-                                         item.second.node.pose.y);
+                                         item.second.pose.x,
+                                         item.second.pose.y);
     costs[item.first] = initial_cost;
     parents[item.first] = Parent{-1, EdgeType::FLAT_NAV, initial_cost};
     queue.push(QueueItem(initial_cost, item.first));
@@ -141,6 +139,7 @@ bool TopologyPlanner::plan(const geometry_msgs::PoseStamped& start,
     return false;
   }
 
+  // Dijkstra算法搜索最短路径
   while (!queue.empty())
   {
     const double current_cost = queue.top().first;
@@ -151,35 +150,53 @@ bool TopologyPlanner::plan(const geometry_msgs::PoseStamped& start,
       continue;
     }
 
-    for (const TopoEdge& edge : graph_.vertex(current_id).edges)
-    {
-      const double candidate = current_cost + edge.cost;
-      const auto known = costs.find(edge.to);
+    const TopologyNode& current_node = graph_.node(current_id);
+    const int current_floor_id = TopologyGraph::floor_id_from_node_id(current_id);
+
+    const auto relax = [&](int to_node_id, EdgeType edge_type, double edge_cost) {
+      const double candidate = current_cost + edge_cost;
+      const auto known = costs.find(to_node_id);
       if (known != costs.end() && candidate >= known->second)
+      {
+        return;
+      }
+      costs[to_node_id] = candidate;
+      parents[to_node_id] = Parent{current_id, edge_type, edge_cost};
+      queue.push(QueueItem(candidate, to_node_id));
+    };
+
+    // 同层节点天然全部连通，不在图中永久保存O(N^2)条平层边。
+    for (const auto& item : graph_.floor(current_floor_id).nodes)
+    {
+      if (item.first == current_id)
       {
         continue;
       }
-      costs[edge.to] = candidate;
-      parents[edge.to] = Parent{current_id, edge.type, edge.cost};
-      queue.push(QueueItem(candidate, edge.to));
+      relax(item.first,
+            EdgeType::FLAT_NAV,
+            distance(current_node.pose.x,
+                     current_node.pose.y,
+                     item.second.pose.x,
+                     item.second.pose.y));
+    }
+
+    for (const TopologyEdge& edge : current_node.edges)
+    {
+      relax(edge.to_node_id, edge.type, edge.cost);
     }
   }
 
   int final_node = -1;
   double final_cost = std::numeric_limits<double>::infinity();
-  for (const auto& item : graph_.vertices())
+  for (const auto& item : graph_.floor(goal_floor).nodes)
   {
-    if (item.second.node.map_id != goal_floor)
-    {
-      continue;
-    }
     const auto reached = costs.find(item.first);
     if (reached == costs.end())
     {
       continue;
     }
-    const double candidate = reached->second + distance(item.second.node.pose.x,
-                                                         item.second.node.pose.y,
+    const double candidate = reached->second + distance(item.second.pose.x,
+                                                         item.second.pose.y,
                                                          goal.pose.position.x,
                                                          goal.pose.position.y);
     if (candidate < final_cost)
@@ -202,7 +219,7 @@ bool TopologyPlanner::plan(const geometry_msgs::PoseStamped& start,
   std::reverse(path.begin(), path.end());
 
   const int first_node_id = path.front();
-  const TopoNode& first_node = graph_.vertex(first_node_id).node;
+  const TopologyNode& first_node = graph_.node(first_node_id);
   route.segments.push_back(make_segment(floor_msgs::RouteSegment::FLAT,
                                         start_floor,
                                         start_floor,
@@ -215,19 +232,19 @@ bool TopologyPlanner::plan(const geometry_msgs::PoseStamped& start,
   {
     const int from_id = path[i - 1];
     const int to_id = path[i];
-    const TopoNode& from_node = graph_.vertex(from_id).node;
-    const TopoNode& to_node = graph_.vertex(to_id).node;
+    const TopologyNode& from_node = graph_.node(from_id);
+    const TopologyNode& to_node = graph_.node(to_id);
     const Parent& parent = parents.at(to_id);
     route.segments.push_back(make_segment(message_edge_type(parent.edge_type),
-                                          from_node.map_id,
-                                          to_node.map_id,
+                                          TopologyGraph::floor_id_from_node_id(from_id),
+                                          TopologyGraph::floor_id_from_node_id(to_id),
                                           from_id,
                                           to_id,
                                           node_pose(from_node, map_frame_),
                                           node_pose(to_node, map_frame_)));
   }
 
-  const TopoNode& last_node = graph_.vertex(final_node).node;
+  const TopologyNode& last_node = graph_.node(final_node);
   route.segments.push_back(make_segment(floor_msgs::RouteSegment::FLAT,
                                         goal_floor,
                                         goal_floor,

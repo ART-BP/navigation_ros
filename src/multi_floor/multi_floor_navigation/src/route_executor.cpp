@@ -8,7 +8,7 @@
 namespace multi_floor_navigation
 {
 
-RouteExecutor::RouteExecutor(const TopoGraph& graph,
+RouteExecutor::RouteExecutor(const TopologyGraph& graph,
                              MapSwitcher& map_switcher,
                              std::string move_base_action,
                              double server_timeout,
@@ -154,19 +154,20 @@ bool RouteExecutor::execute(const floor_msgs::NavigationRoute& route,
       return false;
     }
 
-    const StairRoute* stair_route = nullptr;
+    const TopologyEdge* stair_edge = nullptr;
     try
     {
-      stair_route = &graph_.stair_route(segment.from_node_id);
+      stair_edge = &graph_.edge(segment.from_node_id, segment.to_node_id);
     }
     catch (const std::out_of_range&)
     {
-      message = "no stair route for entry node " + std::to_string(segment.from_node_id);
+      message = "no stair edge from node " + std::to_string(segment.from_node_id) +
+                " to node " + std::to_string(segment.to_node_id);
       return false;
     }
-    if (stair_route->to_node_id != segment.to_node_id)
+    if (stair_edge->type == EdgeType::FLAT_NAV || stair_edge->primitives.size() < 2)
     {
-      message = "stair route endpoint does not match the planned segment";
+      message = "planned stair edge has no valid stair path";
       return false;
     }
 
@@ -180,7 +181,7 @@ bool RouteExecutor::execute(const floor_msgs::NavigationRoute& route,
     if (!stair_executor_->execute(segment.from_node_id,
                                   segment.from_floor,
                                   segment.to_floor,
-                                  *stair_route,
+                                  *stair_edge,
                                   cancel_requested,
                                   message))
     {

@@ -10,12 +10,12 @@ namespace multi_floor_navigation
 namespace
 {
 
-geometry_msgs::Pose pose_message(const Pose2D& source)
+geometry_msgs::Pose pose_message(const Pose3D& source)
 {
   geometry_msgs::Pose pose;
   pose.position.x = source.x;
   pose.position.y = source.y;
-  pose.position.z = 0.0;
+  pose.position.z = source.z;
   tf2::Quaternion orientation;
   orientation.setRPY(0.0, 0.0, source.yaw);
   pose.orientation = tf2::toMsg(orientation);
@@ -32,7 +32,7 @@ StairActionClient::StairActionClient(std::string action_name, double server_time
 bool StairActionClient::execute(int entry_node_id,
                                 int from_floor,
                                 int to_floor,
-                                const StairRoute& route,
+                                const TopologyEdge& edge,
                                 const std::function<bool()>& cancel_requested,
                                 std::string& message)
 {
@@ -47,8 +47,8 @@ bool StairActionClient::execute(int entry_node_id,
   goal.entry_node_id = entry_node_id;
   goal.start_floor = from_floor;
   goal.goal_floor = to_floor;
-  goal.primitives.reserve(route.primitives.size());
-  for (const Pose2D& primitive : route.primitives)
+  goal.primitives.reserve(edge.primitives.size());
+  for (const Pose3D& primitive : edge.primitives)
   {
     goal.primitives.push_back(pose_message(primitive));
   }

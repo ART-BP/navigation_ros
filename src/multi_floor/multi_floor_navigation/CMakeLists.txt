@@ -48,7 +48,7 @@ add_library(multi_floor_navigation_core
   src/route_executor.cpp
   src/stair_action_client.cpp
   src/stair_controller.cpp
-  src/topo_map.cpp
+  src/topology_map.cpp
   src/topology_planner.cpp
 )
 add_dependencies(multi_floor_navigation_core
@@ -81,7 +81,17 @@ target_link_libraries(stair_executor_node
   ${catkin_LIBRARIES}
 )
 
-install(TARGETS multi_floor_navigation_core multi_floor_navigation_node stair_executor_node
+add_executable(test_map
+  src/test_map_switcher.cpp
+)
+add_dependencies(test_map
+  ${catkin_EXPORTED_TARGETS}
+)
+target_link_libraries(test_map
+  multi_floor_navigation_core
+  ${catkin_LIBRARIES}
+)
+install(TARGETS multi_floor_navigation_core multi_floor_navigation_node stair_executor_node test_map
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

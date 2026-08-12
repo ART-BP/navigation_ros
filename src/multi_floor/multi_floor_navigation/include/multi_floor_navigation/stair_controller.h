@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-#include "multi_floor_navigation/topo_struct.h"
+#include "multi_floor_navigation/topology_struct.h"
 
 namespace multi_floor_navigation
 {
@@ -49,13 +49,19 @@ private:
   {
     double x;
     double y;
+    double z;
     double yaw;
   };
 
   void execute_goal(const floor_msgs::StairNavigationGoalConstPtr& goal);
   bool lookup_robot_pose(RobotPose& pose, std::string& message);
-  bool track_segment(const Pose2D& start,
-                     const Pose2D& goal,
+  bool align_to_start(const Pose3D& start,
+                      double segment_yaw,
+                      std::size_t start_index,
+                      std::size_t point_count,
+                      std::string& message);
+  bool track_segment(const Pose3D& start,
+                     const Pose3D& goal,
                      std::size_t target_index,
                      std::size_t point_count,
                      std::string& message);
@@ -77,8 +83,9 @@ private:
   double start_position_tolerance_;
   double start_yaw_tolerance_;
   double waypoint_position_tolerance_;
-  double waypoint_yaw_tolerance_;
   double lookahead_distance_;
+  double centerline_slowdown_distance_;
+  double max_centerline_deviation_;
   double min_linear_velocity_;
   double max_linear_velocity_;
   double max_angular_velocity_;

@@ -5,7 +5,7 @@
 
 #include <string>
 
-#include "multi_floor_navigation/topo_map.h"
+#include "multi_floor_navigation/topology_map.h"
 
 namespace multi_floor_navigation
 {
@@ -13,7 +13,7 @@ namespace multi_floor_navigation
 class TopologyPlanner
 {
 public:
-  TopologyPlanner(const TopoGraph& graph, std::string map_frame);
+  TopologyPlanner(const TopologyGraph& graph, std::string map_frame);
 
   bool plan(const geometry_msgs::PoseStamped& start,
             int start_floor,
@@ -23,7 +23,7 @@ public:
             std::string& message) const;
 
 private:
-  const TopoGraph& graph_;
+  const TopologyGraph& graph_;
   std::string map_frame_;
 };
 

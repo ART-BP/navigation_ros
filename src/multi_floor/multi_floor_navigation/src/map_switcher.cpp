@@ -10,7 +10,7 @@ namespace multi_floor_navigation
 {
 
 MapSwitcher::MapSwitcher(ros::NodeHandle& node,
-                         const TopoGraph& graph,
+                         const TopologyGraph& graph,
                          std::string change_map_service,
                          std::string clear_costmaps_service)
   : graph_(graph)
@@ -22,7 +22,7 @@ MapSwitcher::MapSwitcher(ros::NodeHandle& node,
 
 void MapSwitcher::set_current_floor(int floor_id)
 {
-  if (graph_.floor_map_paths().count(floor_id) == 0)
+  if (!graph_.has_floor(floor_id))
   {
     throw std::out_of_range("cannot set an unknown current floor: " + std::to_string(floor_id));
   }

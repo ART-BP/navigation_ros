@@ -2,6 +2,8 @@
 int32 entry_node_id
 int32 start_floor
 int32 goal_floor
+# 每个Pose读取position.x/y/z；z暂存但不参与控制，orientation不参与控制。
+# 第i个点的控制yaw由第i个点指向第i+1个点的xy连线计算，最后一点不需要yaw。
 geometry_msgs/Pose[] primitives
 
 ---
