@@ -3,6 +3,8 @@
 #include <tf2/utils.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
+#include <sensor_msgs/point_cloud2_iterator.h>
+
 #include <boost/bind.hpp>
 
 #include <algorithm>
@@ -131,6 +133,9 @@ StairController::StairController(ros::NodeHandle& node, ros::NodeHandle& private
   , segment_timeout_(parameter<double>(private_node_, "segment_timeout", 60.0))
   , obstacle_box_width_(parameter<double>(private_node_, "obstacle_box_width", 0.5))
   , obstacle_box_length_(parameter<double>(private_node_, "obstacle_box_length", 0.6))
+  , uphill_obstacle_z_(parameter<double>(private_node_, "uphill_obstacle_z", 0.1))
+  , downhill_obstacle_z_(parameter<double>(private_node_, "downhill_obstacle_z", -0.1))
+  , stair_direction_(0)
   , front_obstacle_detected_(false)
   , linear_pid_(parameter<double>(private_node_, "linear_kp", 0.8),
                 parameter<double>(private_node_, "linear_ki", 0.0),
@@ -159,15 +164,17 @@ StairController::StairController(ros::NodeHandle& node, ros::NodeHandle& private
 
   const std::string cmd_vel_topic =
       parameter<std::string>(private_node_, "cmd_vel_topic", "/cmd_vel");
-  const std::string scan_topic =
-      parameter<std::string>(private_node_, "scan_topic", "/scan");
+  const std::string cloud_topic =
+      parameter<std::string>(private_node_, "cloud_topic", "/pseudo_cloud_base");
   cmd_vel_publisher_ = node_.advertise<geometry_msgs::Twist>(cmd_vel_topic, 1);
-  scan_subscriber_ = node_.subscribe(scan_topic, 1, &StairController::scan_callback, this);
+  cloud_subscriber_ = node_.subscribe(cloud_topic, 1, &StairController::cloud_callback, this);
   action_server_.start();
   ROS_INFO_STREAM("stair executor uses TF " << map_frame_ << " -> " << base_frame_);
-  ROS_INFO_STREAM("stair obstacle stop monitors " << scan_topic << " in front box "
+  ROS_INFO_STREAM("stair obstacle stop monitors " << cloud_topic << " in front box "
                                                    << obstacle_box_length_ << " x "
-                                                   << obstacle_box_width_ << " m");
+                                                   << obstacle_box_width_ << " m; z thresholds up="
+                                                   << uphill_obstacle_z_ << ", down="
+                                                   << downhill_obstacle_z_);
 }
 
 StairController::~StairController()
@@ -216,31 +223,50 @@ void StairController::publish_feedback(std::uint8_t state,
   action_server_.publishFeedback(feedback);
 }
 
-void StairController::scan_callback(const sensor_msgs::LaserScanConstPtr& scan)
+void StairController::cloud_callback(const sensor_msgs::PointCloud2ConstPtr& cloud)
 {
-  bool obstacle_detected = false;
-  double angle = scan->angle_min;
-  const double half_width = obstacle_box_width_ * 0.5;
-
-  for (const float range : scan->ranges)
+  const int direction = stair_direction_.load();
+  if (direction == 0)
   {
-    if (std::isfinite(range) && range >= scan->range_min && range <= scan->range_max)
+    front_obstacle_detected_.store(false);
+    return;
+  }
+
+  bool obstacle_detected = false;
+  const double half_width = obstacle_box_width_ * 0.5;
+  const double z_threshold = direction > 0 ? uphill_obstacle_z_ : downhill_obstacle_z_;
+
+  try
+  {
+    sensor_msgs::PointCloud2ConstIterator<float> x_iterator(*cloud, "x");
+    sensor_msgs::PointCloud2ConstIterator<float> y_iterator(*cloud, "y");
+    sensor_msgs::PointCloud2ConstIterator<float> z_iterator(*cloud, "z");
+    for (; x_iterator != x_iterator.end(); ++x_iterator, ++y_iterator, ++z_iterator)
     {
-      const double x = static_cast<double>(range) * std::cos(angle);
-      const double y = static_cast<double>(range) * std::sin(angle);
-      if (x > 0.0 && x <= obstacle_box_length_ && std::fabs(y) <= half_width)
+      const double x = *x_iterator;
+      const double y = *y_iterator;
+      const double z = *z_iterator;
+      if (std::isfinite(x) && std::isfinite(y) && std::isfinite(z) &&
+          x > 0.0 && x <= obstacle_box_length_ && std::fabs(y) <= half_width &&
+          z > z_threshold)
       {
         obstacle_detected = true;
         break;
       }
     }
-    angle += scan->angle_increment;
+  }
+  catch (const std::runtime_error& error)
+  {
+    ROS_ERROR_THROTTLE(1.0, "Cannot inspect stair obstacle cloud: %s", error.what());
+    return;
   }
 
   const bool previous = front_obstacle_detected_.exchange(obstacle_detected);
   if (obstacle_detected && !previous)
   {
-    ROS_WARN("Stair obstacle detected in front box; stopping until it disappears.");
+    ROS_WARN("Stair obstacle detected in front 3D box while going %s; "
+             "stopping until it disappears.",
+             direction > 0 ? "up" : "down");
   }
   else if (!obstacle_detected && previous)
   {
@@ -501,10 +527,24 @@ void StairController::execute_goal(const floor_msgs::StairNavigationGoalConstPtr
 {
   floor_msgs::StairNavigationResult result;
   // 无论成功、取消、校验失败、TF失败还是异常退出，回调结束时都再次发送零速度。
-  StopOnExit stop_on_exit([this]() { publish_stop(); });
+  StopOnExit stop_on_exit([this]() {
+    stair_direction_.store(0);
+    front_obstacle_detected_.store(false);
+    publish_stop();
+  });
+  stair_direction_.store(0);
+  front_obstacle_detected_.store(false);
   publish_stop();
   last_feedback_state_ = 255;
   last_feedback_progress_.clear();
+  if (goal->start_floor == goal->goal_floor)
+  {
+    result.success = false;
+    result.message = "stair route must connect different floors";
+    action_server_.setAborted(result, result.message);
+    return;
+  }
+  stair_direction_.store(goal->goal_floor > goal->start_floor ? 1 : -1);
   if (goal->primitives.size() < 2)
   {
     result.success = false;

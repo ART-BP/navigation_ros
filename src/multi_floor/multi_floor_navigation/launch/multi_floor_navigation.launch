@@ -34,9 +34,11 @@
         output="screen">
     <param name="action_name" value="/stair_navigation"/>
     <param name="cmd_vel_topic" value="/cmd_vel"/>
-    <param name="scan_topic" value="/scan"/>
+    <param name="cloud_topic" value="/pseudo_cloud_base"/>
     <param name="obstacle_box_width" value="0.5"/>
     <param name="obstacle_box_length" value="0.5"/>
+    <param name="uphill_obstacle_z" value="0.1"/>
+    <param name="downhill_obstacle_z" value="-0.1"/>
     <param name="map_frame" value="map"/>
     <param name="base_frame" value="base_link"/>
     <param name="control_rate" value="20.0"/>

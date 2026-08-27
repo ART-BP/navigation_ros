@@ -4,7 +4,7 @@
 #include <floor_msgs/StairNavigationAction.h>
 #include <geometry_msgs/Twist.h>
 #include <ros/ros.h>
-#include <sensor_msgs/LaserScan.h>
+#include <sensor_msgs/PointCloud2.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
@@ -69,7 +69,7 @@ private:
                      std::size_t point_count,
                      std::string& message);
   void publish_feedback(std::uint8_t state, std::size_t completed_points, std::size_t point_count);
-  void scan_callback(const sensor_msgs::LaserScanConstPtr& scan);
+  void cloud_callback(const sensor_msgs::PointCloud2ConstPtr& cloud);
   void publish_motion_command(const geometry_msgs::Twist& command);
   void publish_stop();
   bool preempt_requested();
@@ -78,7 +78,7 @@ private:
   ros::NodeHandle private_node_;
   ActionServer action_server_;
   ros::Publisher cmd_vel_publisher_;
-  ros::Subscriber scan_subscriber_;
+  ros::Subscriber cloud_subscriber_;
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
 
@@ -99,6 +99,10 @@ private:
   double segment_timeout_;
   double obstacle_box_width_;
   double obstacle_box_length_;
+  double uphill_obstacle_z_;
+  double downhill_obstacle_z_;
+  // 1表示上楼，-1表示下楼，0表示当前没有楼梯任务。
+  std::atomic<int> stair_direction_;
   std::atomic<bool> front_obstacle_detected_;
 
   PidController linear_pid_;
