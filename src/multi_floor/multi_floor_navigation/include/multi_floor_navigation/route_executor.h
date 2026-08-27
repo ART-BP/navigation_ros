@@ -16,6 +16,8 @@
 namespace multi_floor_navigation
 {
 
+class Go2WMotionManager;
+
 //根据获得的拓扑图和规划的路径，执行路径规划
 class StairExecutor
 {
@@ -42,7 +44,9 @@ public:
                 std::string move_base_action,
                 double server_timeout,
                 double segment_timeout,
-                StairExecutor* stair_executor = nullptr);
+                double move_base_stop_timeout,
+                StairExecutor* stair_executor = nullptr,
+                Go2WMotionManager* motion_manager = nullptr);
   ~RouteExecutor();
 
   void set_stair_executor(StairExecutor* stair_executor);
@@ -59,13 +63,17 @@ private:
   bool execute_flat(const floor_msgs::RouteSegment& segment,
                     const CancelCheck& cancel_requested,
                     std::string& message);
+  bool stop_move_base(std::string& message);
 
   const TopologyGraph& graph_;
   MapSwitcher& map_switcher_;
   MoveBaseClient move_base_client_;
   double server_timeout_;
   double segment_timeout_;
+  double move_base_stop_timeout_;
+  bool move_base_goal_active_;
   StairExecutor* stair_executor_;
+  Go2WMotionManager* motion_manager_;
 };
 
 }  // namespace multi_floor_navigation

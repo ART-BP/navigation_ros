@@ -10,7 +10,7 @@
     <param name="use_sim_time" value="false" />
     
     <!-- PointCloud to LaserScan -->
-    <include file="$(find omni_navigation)/launch/pc2scan.launch">
+    <include file="$(find omni_navigation)/launch/pc2scan_stair.launch">
       <arg name="range_max" value="$(arg scan_range_max)" />
     </include>
 

@@ -1,7 +1,13 @@
 image: B5.pgm
-resolution: 0.050000
-origin: [-50.000000, -50.000000, 0.000000]
+resolution: 0.05
+origin: [-59.8, -70.65, 0.000000]
 negate: 0
 occupied_thresh: 0.65
 free_thresh: 0.196
 
+# --- Generation Metadata ---
+# algorithm_mode: Absolute_Elevation_Projection
+# map_resolution: 0.05
+# min_points_per_cell: 1
+# thre_z_min: 3.2
+# thre_z_max: 4.3

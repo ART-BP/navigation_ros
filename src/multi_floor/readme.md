@@ -29,3 +29,18 @@ flowchart TD
 `TopoGraph`、`TopologyPlanner`、`RouteExecutor`和`MapSwitcher`位于同一个
 `multi_floor_navigation_node`进程，但保持独立类。内部规划直接调用，
 `get_topology_plan` service仅作为外部规划接口。
+`navigate` action和`get_topology_plan` service只接收目标位姿与目标楼层；起点实时取自
+`map -> base_link` TF，起始楼层取自`MapSwitcher`当前状态。
+source devel/setup.bash
+
+rostopic pub -1 /navigate/goal floor_msgs/MultiFloorNavigationActionGoal "
+header: {stamp: now}
+goal_id: {stamp: now, id: 'manual_goal_001'}
+goal:
+  goal:
+    header: {stamp: now, frame_id: 'map'}
+    pose:
+      position: {x: -22.1, y: -34.9, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+  goal_floor: 10400
+"

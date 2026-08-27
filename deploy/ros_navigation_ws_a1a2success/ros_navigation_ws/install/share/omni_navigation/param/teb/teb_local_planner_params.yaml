@@ -46,7 +46,7 @@ TebLocalPlannerROS:
   acc_lim_theta: 0.7           # (double) [rad/s²] 角加速度限制，使机器人能快速建立朝前的航向
 
   # 5.2 类车 / Ackermann 设置
-  min_turning_radius: 0        # (double) [m] 最小转弯半径（差动驱动设为0）
+  min_turning_radius: 3        # (double) [m] 最小转弯半径（差动驱动设为0）
   wheelbase: 0.8               # (double) [m] 前后轴距（类车机器人使用）
   cmd_angle_instead_rotvel: false  # (bool) 将 cmd_vel/angular/z 解释为转向角而非角速度
 
@@ -80,7 +80,7 @@ TebLocalPlannerROS:
   inflation_dist: 0.6                 # (double) [m] 静态障碍的膨胀距离（等同 costmap 膨胀半径）
   dynamic_obstacle_inflation_dist: 1.1 # (double) [m] 动态障碍缓冲区半径，用于提前避让
 
-  include_dynamic_obstacles: true     # (bool) 考虑外部动态障碍（需要发布障碍消息）
+  include_dynamic_obstacles: false     # (bool) 考虑外部动态障碍（需要发布障碍消息）
 
   obstacle_association_cutoff_factor: 8.0           # (double) 在障碍关联时保留附近角落几何的因子
   obstacle_association_force_inclusion_factor: 3.0  # (double) 在当前最小距离下强制包含障碍的因子（例如近距离强制纳入）

@@ -2,6 +2,7 @@
 
 #include <ros/ros.h>
 
+#include <mutex>
 #include <string>
 
 #include "multi_floor_navigation/topology_map.h"
@@ -25,6 +26,7 @@ private:
   const TopologyGraph& graph_;
   ros::ServiceClient change_map_client_;
   ros::ServiceClient clear_costmaps_client_;
+  mutable std::mutex current_floor_mutex_;
   int current_floor_;
 };
 

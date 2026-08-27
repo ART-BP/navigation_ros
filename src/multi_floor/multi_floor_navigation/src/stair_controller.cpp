@@ -7,8 +7,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace multi_floor_navigation
 {
@@ -48,6 +50,22 @@ Pose3D pose_from_message(const geometry_msgs::Pose& message)
   pose.yaw = 0.0;
   return pose;
 }
+
+class StopOnExit
+{
+public:
+  explicit StopOnExit(std::function<void()> stop) : stop_(std::move(stop))
+  {
+  }
+
+  ~StopOnExit()
+  {
+    stop_();
+  }
+
+private:
+  std::function<void()> stop_;
+};
 
 }  // namespace
 
@@ -111,6 +129,9 @@ StairController::StairController(ros::NodeHandle& node, ros::NodeHandle& private
   , max_angular_velocity_(parameter<double>(private_node_, "max_angular_velocity", 0.8))
   , heading_stop_threshold_(parameter<double>(private_node_, "heading_stop_threshold", 0.75))
   , segment_timeout_(parameter<double>(private_node_, "segment_timeout", 60.0))
+  , obstacle_box_width_(parameter<double>(private_node_, "obstacle_box_width", 0.5))
+  , obstacle_box_length_(parameter<double>(private_node_, "obstacle_box_length", 0.6))
+  , front_obstacle_detected_(false)
   , linear_pid_(parameter<double>(private_node_, "linear_kp", 0.8),
                 parameter<double>(private_node_, "linear_ki", 0.0),
                 parameter<double>(private_node_, "linear_kd", 0.05),
@@ -127,18 +148,26 @@ StairController::StairController(ros::NodeHandle& node, ros::NodeHandle& private
   if (control_rate_ <= 0.0 || tf_timeout_ < 0.0 || start_position_tolerance_ <= 0.0 ||
       start_yaw_tolerance_ <= 0.0 || waypoint_position_tolerance_ <= 0.0 ||
       lookahead_distance_ <= 0.0 || centerline_slowdown_distance_ < 0.0 ||
+      start_position_tolerance_ >= max_centerline_deviation_ ||
       max_centerline_deviation_ <= centerline_slowdown_distance_ ||
       min_linear_velocity_ < 0.0 || max_linear_velocity_ <= 0.0 ||
-      min_linear_velocity_ > max_linear_velocity_ || max_angular_velocity_ <= 0.0)
+      min_linear_velocity_ > max_linear_velocity_ || max_angular_velocity_ <= 0.0 ||
+      obstacle_box_width_ <= 0.0 || obstacle_box_length_ <= 0.0)
   {
     throw std::invalid_argument("invalid stair controller parameter");
   }
 
   const std::string cmd_vel_topic =
       parameter<std::string>(private_node_, "cmd_vel_topic", "/cmd_vel");
+  const std::string scan_topic =
+      parameter<std::string>(private_node_, "scan_topic", "/scan");
   cmd_vel_publisher_ = node_.advertise<geometry_msgs::Twist>(cmd_vel_topic, 1);
+  scan_subscriber_ = node_.subscribe(scan_topic, 1, &StairController::scan_callback, this);
   action_server_.start();
   ROS_INFO_STREAM("stair executor uses TF " << map_frame_ << " -> " << base_frame_);
+  ROS_INFO_STREAM("stair obstacle stop monitors " << scan_topic << " in front box "
+                                                   << obstacle_box_length_ << " x "
+                                                   << obstacle_box_width_ << " m");
 }
 
 StairController::~StairController()
@@ -156,6 +185,12 @@ bool StairController::lookup_robot_pose(RobotPose& pose, std::string& message)
     pose.y = transform.transform.translation.y;
     pose.z = transform.transform.translation.z;
     pose.yaw = tf2::getYaw(transform.transform.rotation);
+    if (!std::isfinite(pose.x) || !std::isfinite(pose.y) || !std::isfinite(pose.z) ||
+        !std::isfinite(pose.yaw))
+    {
+      message = "TF contains a non-finite robot pose";
+      return false;
+    }
     return true;
   }
   catch (const tf2::TransformException& error)
@@ -181,6 +216,48 @@ void StairController::publish_feedback(std::uint8_t state,
   action_server_.publishFeedback(feedback);
 }
 
+void StairController::scan_callback(const sensor_msgs::LaserScanConstPtr& scan)
+{
+  bool obstacle_detected = false;
+  double angle = scan->angle_min;
+  const double half_width = obstacle_box_width_ * 0.5;
+
+  for (const float range : scan->ranges)
+  {
+    if (std::isfinite(range) && range >= scan->range_min && range <= scan->range_max)
+    {
+      const double x = static_cast<double>(range) * std::cos(angle);
+      const double y = static_cast<double>(range) * std::sin(angle);
+      if (x > 0.0 && x <= obstacle_box_length_ && std::fabs(y) <= half_width)
+      {
+        obstacle_detected = true;
+        break;
+      }
+    }
+    angle += scan->angle_increment;
+  }
+
+  const bool previous = front_obstacle_detected_.exchange(obstacle_detected);
+  if (obstacle_detected && !previous)
+  {
+    ROS_WARN("Stair obstacle detected in front box; stopping until it disappears.");
+  }
+  else if (!obstacle_detected && previous)
+  {
+    ROS_INFO("Stair front box is clear; resuming control.");
+  }
+}
+
+void StairController::publish_motion_command(const geometry_msgs::Twist& command)
+{
+  if (front_obstacle_detected_.load())
+  {
+    publish_stop();
+    return;
+  }
+  cmd_vel_publisher_.publish(command);
+}
+
 void StairController::publish_stop()
 {
   cmd_vel_publisher_.publish(geometry_msgs::Twist());
@@ -193,6 +270,7 @@ bool StairController::preempt_requested()
 
 bool StairController::align_to_start(const Pose3D& start,
                                      double segment_yaw,
+                                     bool align_position,
                                      std::size_t start_index,
                                      std::size_t point_count,
                                      std::string& message)
@@ -237,7 +315,9 @@ bool StairController::align_to_start(const Pose3D& start,
                      start_index + 1,
                      point_count);
 
-    if (position_error > start_position_tolerance_)
+    // 只有整条楼梯路径的第一个入口点需要重新对齐位置。中间点已经由
+    // 上一段确认到达，下一段只对齐新方向，避免因轻微越点而掉头追回。
+    if (align_position && position_error > start_position_tolerance_)
     {
       aligning_yaw = false;
       const double desired_yaw = std::atan2(start.y - robot.y, start.x - robot.x);
@@ -273,7 +353,7 @@ bool StairController::align_to_start(const Pose3D& start,
       command.angular.z = angular_pid_.update(yaw_error, dt);
     }
 
-    cmd_vel_publisher_.publish(command);
+    publish_motion_command(command);
     rate.sleep();
   }
 
@@ -336,19 +416,6 @@ bool StairController::track_segment(const Pose3D& start,
     const ros::WallTime now = ros::WallTime::now();
     const double dt = (now - previous_update).toSec();
     previous_update = now;
-    const double goal_distance = position_distance(robot.x, robot.y, goal.x, goal.y);
-    geometry_msgs::Twist command;
-
-    if (goal_distance <= waypoint_position_tolerance_)
-    {
-      publish_stop();
-      publish_feedback(floor_msgs::StairNavigationFeedback::TRACKING,
-                       target_index + 1,
-                       point_count);
-      message = "reached stair route point " + std::to_string(target_index + 1);
-      return true;
-    }
-
     const double along_track = (robot.x - start.x) * unit_x +
                                (robot.y - start.y) * unit_y;
     const double cross_track = -(robot.x - start.x) * unit_y +
@@ -363,6 +430,33 @@ bool StairController::track_segment(const Pose3D& start,
       return false;
     }
 
+    const double goal_distance = position_distance(robot.x, robot.y, goal.x, goal.y);
+    const double endpoint_overshoot = along_track - segment_length;
+    const bool reached_by_distance = goal_distance <= waypoint_position_tolerance_;
+    const bool crossed_endpoint = endpoint_overshoot >= 0.0 &&
+                                  endpoint_overshoot <= max_centerline_deviation_;
+    if (reached_by_distance || crossed_endpoint)
+    {
+      publish_stop();
+      publish_feedback(floor_msgs::StairNavigationFeedback::TRACKING,
+                       target_index + 1,
+                       point_count);
+      message = "reached stair route point " + std::to_string(target_index + 1);
+      return true;
+    }
+
+    // 终点已经明显位于机器人身后时禁止继续用它计算航向，否则控制器会
+    // 线速度置零并原地掉头。正常情况下会在刚越过终点时由上面的条件结束。
+    if (endpoint_overshoot > max_centerline_deviation_)
+    {
+      publish_stop();
+      message = "endpoint overshoot " + std::to_string(endpoint_overshoot) +
+                " exceeds limit " + std::to_string(max_centerline_deviation_) +
+                " on segment ending at point " + std::to_string(target_index + 1);
+      return false;
+    }
+
+    geometry_msgs::Twist command;
     const double projection = clamp(along_track, 0.0, segment_length);
     const double lookahead = std::min(segment_length, projection + lookahead_distance_);
     const double target_x = start.x + lookahead * unit_x;
@@ -394,7 +488,7 @@ bool StairController::track_segment(const Pose3D& start,
                      target_index,
                      point_count);
 
-    cmd_vel_publisher_.publish(command);
+    publish_motion_command(command);
     rate.sleep();
   }
 
@@ -406,6 +500,8 @@ bool StairController::track_segment(const Pose3D& start,
 void StairController::execute_goal(const floor_msgs::StairNavigationGoalConstPtr& goal)
 {
   floor_msgs::StairNavigationResult result;
+  // 无论成功、取消、校验失败、TF失败还是异常退出，回调结束时都再次发送零速度。
+  StopOnExit stop_on_exit([this]() { publish_stop(); });
   publish_stop();
   last_feedback_state_ = 255;
   last_feedback_progress_.clear();
@@ -421,7 +517,15 @@ void StairController::execute_goal(const floor_msgs::StairNavigationGoalConstPtr
   route.reserve(goal->primitives.size());
   for (const geometry_msgs::Pose& primitive : goal->primitives)
   {
-    route.push_back(pose_from_message(primitive));
+    const Pose3D point = pose_from_message(primitive);
+    if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
+    {
+      result.success = false;
+      result.message = "stair route contains a non-finite point";
+      action_server_.setAborted(result, result.message);
+      return;
+    }
+    route.push_back(point);
   }
 
   for (std::size_t target = 1; target < route.size(); ++target)
@@ -446,6 +550,7 @@ void StairController::execute_goal(const floor_msgs::StairNavigationGoalConstPtr
                                           route[target].x - route[target - 1].x);
     if (!align_to_start(route[target - 1],
                         segment_yaw,
+                        target == 1,
                         target - 1,
                         route.size(),
                         message))

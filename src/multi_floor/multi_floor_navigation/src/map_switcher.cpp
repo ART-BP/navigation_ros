@@ -26,17 +26,19 @@ void MapSwitcher::set_current_floor(int floor_id)
   {
     throw std::out_of_range("cannot set an unknown current floor: " + std::to_string(floor_id));
   }
+  std::lock_guard<std::mutex> lock(current_floor_mutex_);
   current_floor_ = floor_id;
 }
 
 int MapSwitcher::current_floor() const
 {
+  std::lock_guard<std::mutex> lock(current_floor_mutex_);
   return current_floor_;
 }
 
 bool MapSwitcher::switch_to(int floor_id, std::string& message)
 {
-  if (current_floor_ == floor_id)
+  if (current_floor() == floor_id)
   {
     message = "requested floor map is already active";
     return true;
@@ -67,7 +69,7 @@ bool MapSwitcher::switch_to(int floor_id, std::string& message)
     return false;
   }
 
-  current_floor_ = floor_id;
+  set_current_floor(floor_id);
   std_srvs::Empty clear_costmaps;
   if (!clear_costmaps_client_.call(clear_costmaps))
   {

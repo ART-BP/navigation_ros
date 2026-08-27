@@ -4,9 +4,11 @@
 #include <floor_msgs/StairNavigationAction.h>
 #include <geometry_msgs/Twist.h>
 #include <ros/ros.h>
+#include <sensor_msgs/LaserScan.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -57,6 +59,7 @@ private:
   bool lookup_robot_pose(RobotPose& pose, std::string& message);
   bool align_to_start(const Pose3D& start,
                       double segment_yaw,
+                      bool align_position,
                       std::size_t start_index,
                       std::size_t point_count,
                       std::string& message);
@@ -66,6 +69,8 @@ private:
                      std::size_t point_count,
                      std::string& message);
   void publish_feedback(std::uint8_t state, std::size_t completed_points, std::size_t point_count);
+  void scan_callback(const sensor_msgs::LaserScanConstPtr& scan);
+  void publish_motion_command(const geometry_msgs::Twist& command);
   void publish_stop();
   bool preempt_requested();
 
@@ -73,6 +78,7 @@ private:
   ros::NodeHandle private_node_;
   ActionServer action_server_;
   ros::Publisher cmd_vel_publisher_;
+  ros::Subscriber scan_subscriber_;
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
 
@@ -91,6 +97,9 @@ private:
   double max_angular_velocity_;
   double heading_stop_threshold_;
   double segment_timeout_;
+  double obstacle_box_width_;
+  double obstacle_box_length_;
+  std::atomic<bool> front_obstacle_detected_;
 
   PidController linear_pid_;
   PidController angular_pid_;
