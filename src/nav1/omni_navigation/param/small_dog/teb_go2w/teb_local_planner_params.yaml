@@ -67,6 +67,14 @@ TebLocalPlannerROS:
   ##################################
   xy_goal_tolerance: 0.3        # (double) [m] 接受的平面距离误差
   yaw_goal_tolerance: 0.785     # (double) [rad] 接受的航向误差（约 90°）
+  final_yaw_pid_enabled: true   # (bool) 进入终点范围后锁存为仅旋转 PID 控制
+  final_yaw_pid_distance: 0.5   # (double) [m] TEB 停止平移并切换角度 PID 的距离
+  final_yaw_pid_kp: 1.5
+  final_yaw_pid_ki: 0.0
+  final_yaw_pid_kd: 0.1
+  final_yaw_pid_integral_limit: 0.5
+  final_yaw_pid_min_vel: 0.05   # (double) [rad/s] 阈值外克服静摩擦的最小角速度
+  final_yaw_pid_stable_cycles: 3 # (int) 角度满足且停稳后连续确认周期数
   free_goal_vel: false          # (bool) 若为 false，目标处速度必须为零；防止通过目标时“高速冲过”
 
   ##################################
@@ -161,4 +169,3 @@ TebLocalPlannerROS:
   costmap_converter_spin_thread: true        # (bool) 将 costmap_converter 放到单独线程提高效率
 
   roadmap_graph_area_length_scale: 1.0        # (double) 路网采样区域长度的缩放因子
-

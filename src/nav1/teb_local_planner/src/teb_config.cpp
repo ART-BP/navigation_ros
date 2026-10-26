@@ -90,6 +90,14 @@ void TebConfig::loadRosParamFromNodeHandle(const ros::NodeHandle& nh)
   // GoalTolerance
   nh.param("xy_goal_tolerance", goal_tolerance.xy_goal_tolerance, goal_tolerance.xy_goal_tolerance);
   nh.param("yaw_goal_tolerance", goal_tolerance.yaw_goal_tolerance, goal_tolerance.yaw_goal_tolerance);
+  nh.param("final_yaw_pid_enabled", goal_tolerance.final_yaw_pid_enabled, goal_tolerance.final_yaw_pid_enabled);
+  nh.param("final_yaw_pid_distance", goal_tolerance.final_yaw_pid_distance, goal_tolerance.final_yaw_pid_distance);
+  nh.param("final_yaw_pid_kp", goal_tolerance.final_yaw_pid_kp, goal_tolerance.final_yaw_pid_kp);
+  nh.param("final_yaw_pid_ki", goal_tolerance.final_yaw_pid_ki, goal_tolerance.final_yaw_pid_ki);
+  nh.param("final_yaw_pid_kd", goal_tolerance.final_yaw_pid_kd, goal_tolerance.final_yaw_pid_kd);
+  nh.param("final_yaw_pid_integral_limit", goal_tolerance.final_yaw_pid_integral_limit, goal_tolerance.final_yaw_pid_integral_limit);
+  nh.param("final_yaw_pid_min_vel", goal_tolerance.final_yaw_pid_min_vel, goal_tolerance.final_yaw_pid_min_vel);
+  nh.param("final_yaw_pid_stable_cycles", goal_tolerance.final_yaw_pid_stable_cycles, goal_tolerance.final_yaw_pid_stable_cycles);
   nh.param("free_goal_vel", goal_tolerance.free_goal_vel, goal_tolerance.free_goal_vel);
   nh.param("trans_stopped_vel", goal_tolerance.trans_stopped_vel, goal_tolerance.trans_stopped_vel);
   nh.param("theta_stopped_vel", goal_tolerance.theta_stopped_vel, goal_tolerance.theta_stopped_vel);
@@ -226,6 +234,14 @@ void TebConfig::reconfigure(TebLocalPlannerReconfigureConfig& cfg)
   // GoalTolerance
   goal_tolerance.xy_goal_tolerance = cfg.xy_goal_tolerance;
   goal_tolerance.yaw_goal_tolerance = cfg.yaw_goal_tolerance;
+  goal_tolerance.final_yaw_pid_enabled = cfg.final_yaw_pid_enabled;
+  goal_tolerance.final_yaw_pid_distance = cfg.final_yaw_pid_distance;
+  goal_tolerance.final_yaw_pid_kp = cfg.final_yaw_pid_kp;
+  goal_tolerance.final_yaw_pid_ki = cfg.final_yaw_pid_ki;
+  goal_tolerance.final_yaw_pid_kd = cfg.final_yaw_pid_kd;
+  goal_tolerance.final_yaw_pid_integral_limit = cfg.final_yaw_pid_integral_limit;
+  goal_tolerance.final_yaw_pid_min_vel = cfg.final_yaw_pid_min_vel;
+  goal_tolerance.final_yaw_pid_stable_cycles = cfg.final_yaw_pid_stable_cycles;
   goal_tolerance.free_goal_vel = cfg.free_goal_vel;
   goal_tolerance.trans_stopped_vel = cfg.trans_stopped_vel;
   goal_tolerance.theta_stopped_vel = cfg.theta_stopped_vel;

@@ -64,6 +64,14 @@ TebLocalPlannerROS:
   ##################################
   xy_goal_tolerance: 0.3        # (double) [m] Acceptable planar distance to goal
   yaw_goal_tolerance: 0.15      # (double) [rad] Acceptable yaw difference to goal (~90°)
+  final_yaw_pid_enabled: true   # (bool) Latch rotation-only PID control inside the final goal radius
+  final_yaw_pid_distance: 0.5   # (double) [m] Stop TEB translation and switch to final yaw PID
+  final_yaw_pid_kp: 1.5
+  final_yaw_pid_ki: 0.0
+  final_yaw_pid_kd: 0.1
+  final_yaw_pid_integral_limit: 0.5
+  final_yaw_pid_min_vel: 0.05   # (double) [rad/s] Minimum rotation command outside yaw tolerance
+  final_yaw_pid_stable_cycles: 3 # (int) Consecutive stopped cycles required before success
   free_goal_vel: false          # (bool) If false, goal velocity must be zero; prevents “full-speed rush” through goal
 
   ##################################
@@ -166,4 +174,3 @@ TebLocalPlannerROS:
   # 13. Miscellaneous Settings
   ##################################
   cmd_angle_instead_rotvel: false             # (bool) Publish steering angle instead of rotational velocity (for specific controllers)
-

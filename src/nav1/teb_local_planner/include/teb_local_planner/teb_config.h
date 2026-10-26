@@ -117,6 +117,14 @@ public:
   {
     double yaw_goal_tolerance; //!< Allowed final orientation error
     double xy_goal_tolerance; //!< Allowed final euclidean distance to the goal position
+    bool final_yaw_pid_enabled; //!< Switch to a rotation-only PID controller near the global goal
+    double final_yaw_pid_distance; //!< Distance to the global goal at which the rotation-only controller is latched
+    double final_yaw_pid_kp; //!< Proportional gain of the final yaw controller
+    double final_yaw_pid_ki; //!< Integral gain of the final yaw controller
+    double final_yaw_pid_kd; //!< Angular-velocity damping gain of the final yaw controller
+    double final_yaw_pid_integral_limit; //!< Absolute limit applied to the accumulated yaw error
+    double final_yaw_pid_min_vel; //!< Minimum commanded angular velocity outside the yaw tolerance
+    int final_yaw_pid_stable_cycles; //!< Consecutive stopped cycles required before reporting goal reached
     bool free_goal_vel; //!< Allow the robot's velocity to be nonzero (usally max_vel) for planning purposes
     double trans_stopped_vel; //!< Below what maximum velocity we consider the robot to be stopped in translation
     double theta_stopped_vel; //!< Below what maximum rotation velocity we consider the robot to be stopped in rotation
@@ -292,6 +300,14 @@ public:
 
     goal_tolerance.xy_goal_tolerance = 0.2;
     goal_tolerance.yaw_goal_tolerance = 0.2;
+    goal_tolerance.final_yaw_pid_enabled = true;
+    goal_tolerance.final_yaw_pid_distance = 0.5;
+    goal_tolerance.final_yaw_pid_kp = 1.5;
+    goal_tolerance.final_yaw_pid_ki = 0.0;
+    goal_tolerance.final_yaw_pid_kd = 0.1;
+    goal_tolerance.final_yaw_pid_integral_limit = 0.5;
+    goal_tolerance.final_yaw_pid_min_vel = 0.05;
+    goal_tolerance.final_yaw_pid_stable_cycles = 3;
     goal_tolerance.free_goal_vel = false;
     goal_tolerance.trans_stopped_vel = 0.1;
     goal_tolerance.theta_stopped_vel = 0.1;

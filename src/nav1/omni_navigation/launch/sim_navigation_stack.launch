@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- One-command entry point for the complete simulation navigation chain. -->
+  <arg name="map_file" default="$(find omni_navigation)/maps/map.yaml" />
+  <arg name="local_planner" default="teb" />
+  <arg name="dog_name" default="small_dog" />
+
+  <arg name="paused" default="false" />
+  <arg name="gui" default="true" />
+  <arg name="headless" default="false" />
+  <arg name="debug" default="false" />
+  <arg name="enable_rviz" default="true" />
+
+  <include file="$(find omni_gazebo)/launch/gazebo.launch">
+    <arg name="paused" value="$(arg paused)" />
+    <arg name="use_sim_time" value="true" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="headless" value="$(arg headless)" />
+    <arg name="debug" value="$(arg debug)" />
+    <arg name="enable_lidar3d_to_scan" value="true" />
+    <arg name="enable_rviz" value="$(arg enable_rviz)" />
+  </include>
+
+  <include file="$(find omni_navigation)/launch/sim_navigation.launch">
+    <arg name="map_file" value="$(arg map_file)" />
+    <arg name="local_planner" value="$(arg local_planner)" />
+    <arg name="dog_name" value="$(arg dog_name)" />
+  </include>
+</launch>

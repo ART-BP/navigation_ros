@@ -6,6 +6,8 @@
     <arg name="gui" default="true" />
     <arg name="headless" default="false" />
     <arg name="debug" default="false" />
+    <arg name="enable_lidar3d_to_scan" default="true" />
+    <arg name="enable_rviz" default="true" />
 
     <include file="$(find gazebo_ros)/launch/empty_world.launch">
         <arg name="world_name" value="$(find omni_gazebo)/world/room.world" />
@@ -28,7 +30,13 @@
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
         <param name="use_gui" value="false" />
     </node>
+
+    <group if="$(arg enable_lidar3d_to_scan)">
+        <include file="$(find omni_gazebo)/launch/lidar3d_to_scan.launch" />
+    </group>
     
-    <node name="rviz" pkg="rviz" type="rviz" required="true" output="screen"
-            args="-d $(find omni_gazebo)/config/rviz_config.rviz" />
+    <group if="$(arg enable_rviz)">
+        <node name="rviz" pkg="rviz" type="rviz" required="true" output="screen"
+              args="-d $(find omni_gazebo)/config/rviz_config.rviz" />
+    </group>
 </launch>

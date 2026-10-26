@@ -429,6 +429,10 @@ private:
   PoseSE2 robot_goal_; //!< Store current robot goal
   geometry_msgs::Twist robot_vel_; //!< Store current robot translational and angular velocity (vx, vy, omega)
   bool goal_reached_; //!< store whether the goal is reached or not
+  bool final_yaw_control_active_; //!< Latches rotation-only final yaw control after entering the configured goal radius
+  double final_yaw_integral_; //!< Accumulated yaw error for the final yaw PID controller
+  ros::Time final_yaw_last_time_; //!< Timestamp of the previous final yaw PID update
+  int final_yaw_stable_count_; //!< Consecutive stopped cycles inside the final yaw tolerance
   ros::Time time_last_infeasible_plan_; //!< Store at which time stamp the last infeasible plan was detected
   int no_infeasible_plans_; //!< Store how many times in a row the planner failed to find a feasible plan.
   ros::Time time_last_oscillation_; //!< Store at which time stamp the last oscillation was detected
@@ -453,5 +457,4 @@ public:
 }; // end namespace teb_local_planner
 
 #endif // TEB_LOCAL_PLANNER_ROS_H_
-
 

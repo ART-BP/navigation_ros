@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="cloud_topic" default="/lidar/points" />
+    <arg name="scan_topic" default="/scan" />
+    <arg name="target_frame" default="base_link" />
+
+    <!-- The GPU plugin publishes PointCloud2 directly. Collapse the selected
+         height band into the two-dimensional scan consumed by Nav1. -->
+    <node name="lidar3d_to_laserscan"
+          pkg="pointcloud_to_laserscan"
+          type="pointcloud_to_laserscan_node"
+          output="screen">
+        <remap from="cloud_in" to="$(arg cloud_topic)" />
+        <remap from="scan" to="$(arg scan_topic)" />
+
+        <param name="target_frame" value="$(arg target_frame)" />
+        <param name="transform_tolerance" value="0.05" />
+        <param name="min_height" value="0.05" />
+        <param name="max_height" value="1.50" />
+        <param name="angle_min" value="-3.141592654" />
+        <param name="angle_max" value="3.141592654" />
+        <param name="angle_increment" value="0.010471976" />
+        <param name="scan_time" value="0.10" />
+        <param name="range_min" value="0.20" />
+        <param name="range_max" value="12.0" />
+        <param name="use_inf" value="true" />
+        <param name="inf_epsilon" value="1.0" />
+        <param name="concurrency_level" value="1" />
+    </node>
+</launch>

@@ -60,10 +60,13 @@ rosrun map_server map_saver [-f mapname]
 
 ### Run ros_navigation 
 ```
-roslaunch omni_gazebo gazebo.launch
-roslaunch omni_navigation omni_navigation.launch  local_planner:=teb
+roslaunch omni_navigation sim_navigation_stack.launch local_planner:=teb dog_name:=small_dog
 ```
 Candidate local_planner: `teb`, `dwa`, `neupan`
+
+The integrated launch starts Gazebo, the 3D lidar-to-LaserScan chain, AMCL,
+move_base, and RViz. See the [simulation lidar pipeline](../sim/omni_gazebo/README.md)
+for the topic and TF flowchart.
 
 For NeuPAN, activate the Python environment that provides the `neupan` package
 before launching:

@@ -68,7 +68,9 @@ namespace teb_local_planner
 
 TebLocalPlannerROS::TebLocalPlannerROS() : costmap_ros_(NULL), tf_(NULL), costmap_model_(NULL),
                                            costmap_converter_loader_("costmap_converter", "costmap_converter::BaseCostmapToPolygons"),
-                                           dynamic_recfg_(NULL), custom_via_points_active_(false), goal_reached_(false), no_infeasible_plans_(0),
+                                           dynamic_recfg_(NULL), custom_via_points_active_(false), goal_reached_(false),
+                                           final_yaw_control_active_(false), final_yaw_integral_(0.0), final_yaw_last_time_(0), final_yaw_stable_count_(0),
+                                           no_infeasible_plans_(0),
                                            last_preferred_rotdir_(RotType::none), initialized_(false)
 {
 }
@@ -218,6 +220,10 @@ bool TebLocalPlannerROS::setPlan(const std::vector<geometry_msgs::PoseStamped>& 
             
   // reset goal_reached_ flag
   goal_reached_ = false;
+  final_yaw_control_active_ = false;
+  final_yaw_integral_ = 0.0;
+  final_yaw_last_time_ = ros::Time(0);
+  final_yaw_stable_count_ = 0;
   
   return true;
 }
@@ -293,10 +299,112 @@ uint32_t TebLocalPlannerROS::computeVelocityCommands(const geometry_msgs::PoseSt
   tf2::doTransform(global_plan_.back(), global_goal, tf_plan_to_global);
   double dx = global_goal.pose.position.x - robot_pose_.x();
   double dy = global_goal.pose.position.y - robot_pose_.y();
+  double goal_dist = std::hypot(dx, dy);
   double delta_orient = g2o::normalize_theta( tf2::getYaw(global_goal.pose.orientation) - robot_pose_.theta() );
-  if(fabs(std::sqrt(dx*dx+dy*dy)) < cfg_.goal_tolerance.xy_goal_tolerance
+
+  const bool global_plan_complete = !cfg_.goal_tolerance.complete_global_plan || via_points_.empty();
+  const bool final_goal_in_local_plan = goal_idx >= static_cast<int>(global_plan_.size()) - 1;
+  const bool final_yaw_controller_supported = !cfg_.robot.cmd_angle_instead_rotvel && cfg_.robot.min_turning_radius == 0.0;
+
+  if (cfg_.goal_tolerance.final_yaw_pid_enabled && final_yaw_controller_supported &&
+      !final_yaw_control_active_ && goal_dist < cfg_.goal_tolerance.final_yaw_pid_distance && final_goal_in_local_plan)
+  {
+    final_yaw_control_active_ = true;
+    final_yaw_integral_ = 0.0;
+    final_yaw_last_time_ = ros::Time(0);
+    final_yaw_stable_count_ = 0;
+    planner_->clearPlanner();
+    ROS_INFO("TebLocalPlannerROS: entered final yaw PID control at %.3f m from goal.", goal_dist);
+  }
+
+  if (final_yaw_control_active_)
+  {
+    const ros::Time now = ros::Time::now();
+    double dt = 0.1;
+    if (!final_yaw_last_time_.isZero())
+    {
+      const double measured_dt = (now - final_yaw_last_time_).toSec();
+      if (measured_dt > 0.0 && measured_dt < 1.0)
+        dt = measured_dt;
+    }
+    final_yaw_last_time_ = now;
+
+    cmd_vel.twist.linear.x = 0.0;
+    cmd_vel.twist.linear.y = 0.0;
+
+    const bool stopped = base_local_planner::stopped(base_odom, cfg_.goal_tolerance.theta_stopped_vel,
+                                                      cfg_.goal_tolerance.trans_stopped_vel);
+    if (std::fabs(delta_orient) < cfg_.goal_tolerance.yaw_goal_tolerance)
+    {
+      cmd_vel.twist.angular.z = 0.0;
+      final_yaw_integral_ = 0.0;
+      final_yaw_stable_count_ = stopped ? final_yaw_stable_count_ + 1 : 0;
+
+      if (final_yaw_stable_count_ >= cfg_.goal_tolerance.final_yaw_pid_stable_cycles)
+      {
+        goal_reached_ = true;
+        ROS_INFO("TebLocalPlannerROS: final yaw PID reached goal (yaw error %.4f rad).", delta_orient);
+      }
+    }
+    else
+    {
+      final_yaw_stable_count_ = 0;
+
+      if (cfg_.robot.is_footprint_dynamic)
+      {
+        footprint_spec_ = costmap_ros_->getRobotFootprint();
+        costmap_2d::calculateMinAndMaxDistances(footprint_spec_, robot_inscribed_radius_, robot_circumscribed_radius);
+      }
+
+      const double collision_check_step = std::max(0.01, std::min(0.1, cfg_.trajectory.min_resolution_collision_check_angular));
+      const int collision_check_samples = std::max(1, static_cast<int>(std::ceil(std::fabs(delta_orient) / collision_check_step)));
+      for (int sample = 1; sample <= collision_check_samples; ++sample)
+      {
+        const double ratio = static_cast<double>(sample) / collision_check_samples;
+        const double sample_yaw = g2o::normalize_theta(robot_pose_.theta() + ratio * delta_orient);
+        if (costmap_model_->footprintCost(robot_pose_.x(), robot_pose_.y(), sample_yaw, footprint_spec_,
+                                          robot_inscribed_radius_, robot_circumscribed_radius) < 0.0)
+        {
+          cmd_vel.twist.angular.z = 0.0;
+          last_cmd_ = cmd_vel.twist;
+          message = "Final yaw rotation is blocked by an obstacle";
+          ROS_WARN_THROTTLE(1.0, "TebLocalPlannerROS: final yaw rotation is blocked by an obstacle.");
+          return mbf_msgs::ExePathResult::COLLISION;
+        }
+      }
+
+      const double integral_limit = cfg_.goal_tolerance.final_yaw_pid_integral_limit;
+      final_yaw_integral_ += delta_orient * dt;
+      final_yaw_integral_ = std::max(-integral_limit, std::min(integral_limit, final_yaw_integral_));
+
+      double omega = cfg_.goal_tolerance.final_yaw_pid_kp * delta_orient
+                   + cfg_.goal_tolerance.final_yaw_pid_ki * final_yaw_integral_
+                   - cfg_.goal_tolerance.final_yaw_pid_kd * robot_vel_.angular.z;
+      omega = std::max(-cfg_.robot.max_vel_theta, std::min(cfg_.robot.max_vel_theta, omega));
+
+      if (std::fabs(omega) < cfg_.goal_tolerance.final_yaw_pid_min_vel &&
+          std::fabs(robot_vel_.angular.z) < cfg_.goal_tolerance.theta_stopped_vel)
+      {
+        omega = std::copysign(cfg_.goal_tolerance.final_yaw_pid_min_vel, delta_orient);
+      }
+
+      const double max_omega_delta = cfg_.robot.acc_lim_theta * dt;
+      omega = std::max(last_cmd_.angular.z - max_omega_delta,
+                       std::min(last_cmd_.angular.z + max_omega_delta, omega));
+      cmd_vel.twist.angular.z = omega;
+    }
+
+    no_infeasible_plans_ = 0;
+    last_cmd_ = cmd_vel.twist;
+    message = goal_reached_ ? "Goal reached by final yaw PID" : "Final yaw PID control active";
+    visualization_->publishViaPoints(via_points_);
+    visualization_->publishGlobalPlan(global_plan_);
+    return mbf_msgs::ExePathResult::SUCCESS;
+  }
+
+  if(goal_dist < cfg_.goal_tolerance.xy_goal_tolerance
     && fabs(delta_orient) < cfg_.goal_tolerance.yaw_goal_tolerance
-    && (!cfg_.goal_tolerance.complete_global_plan || via_points_.size() == 0)
+    && global_plan_complete
     && (base_local_planner::stopped(base_odom, cfg_.goal_tolerance.theta_stopped_vel, cfg_.goal_tolerance.trans_stopped_vel)
         || cfg_.goal_tolerance.free_goal_vel))
   {
@@ -1218,5 +1326,3 @@ double TebLocalPlannerROS::getNumberFromXMLRPC(XmlRpc::XmlRpcValue& value, const
 }
 
 } // end namespace teb_local_planner
-
-
